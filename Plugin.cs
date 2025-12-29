@@ -265,7 +265,7 @@ namespace AutopilotMod
                                 bool isEnabled = (bool)item1.GetValue(result);
                                 float[] values = (float[])item2.GetValue(result);
                                 bool newState = !isEnabled;
-                                setM.Invoke(cf, new object[] { newState, values });
+                                setM.Invoke(cf, [newState, values]);
                                 APData.FBWDisabled = !newState;
                                 if (Plugin.EnableActionLogs.Value)
                                     Plugin.Logger.LogInfo("Fly-By-Wire " + (newState ? "ENABLED" : "DISABLED"));
@@ -626,16 +626,18 @@ namespace AutopilotMod
                 Text fText = fbwObj.GetComponent<Text>();
 
                 if (currentFuel <= 1f) {
+                    // Tank Empty
                     tText.text = "00:00"; tText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     rText.text = "--- km"; rText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
-                } else if (fuelFlowEma < 0.0001f) {
-                    tText.text = "99:59"; tText.color = ModUtils.GetColor(Plugin.ColorGood.Value, Color.green);
-                    rText.text = "--- km"; rText.color = ModUtils.GetColor(Plugin.ColorInfo.Value, Color.cyan);
                 } else {
-                    float secs = currentFuel / fuelFlowEma;
+                    // If flow is 0, we pretend it is 0.0001 so it keeps calculating
+                    float calcFlow = Mathf.Max(fuelFlowEma, 0.0001f);
+
+                    float secs = currentFuel / calcFlow;
                     int h = Mathf.FloorToInt(secs / 3600f);
-                    int m = Mathf.FloorToInt((secs % 3600f) / 60f);
-                    if (h>99) { h=99; m=59; }
+                    int m = Mathf.FloorToInt(secs % 3600f / 60f);
+
+                    if (h > 99) { h = 99; m = 59; }
                     tText.text = $"{h:D2}:{m:D2}";
                     
                     float mins = secs / 60f;
@@ -644,7 +646,11 @@ namespace AutopilotMod
                     else tText.color = ModUtils.GetColor(Plugin.ColorGood.Value, Color.green);
 
                     float spd = (aircraft.rb != null) ? aircraft.rb.velocity.magnitude : 0f;
-                    rText.text = $"{((secs * spd) / 1000f):F0} km";
+                    float rangeKm = secs * spd / 1000f;
+
+                    if (rangeKm > 9999f) rangeKm = 9999f;
+
+                    rText.text = $"{rangeKm:F0} km";
                     rText.color = ModUtils.GetColor(Plugin.ColorInfo.Value, Color.cyan);
                 }
 
