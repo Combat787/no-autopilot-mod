@@ -10,7 +10,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.anon.autopilotmod", "Autopilot Mod", "4.8.2")]
+    [BepInPlugin("com.anon.autopilotmod", "Autopilot Mod", "4.8.3")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
