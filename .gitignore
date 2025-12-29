@@ -1,0 +1,10 @@
+Libs/
+
+bin/
+obj/
+
+*.user
+*.cfg
+
+.DS_Store
+Thumbs.db
