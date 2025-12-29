@@ -10,7 +10,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.anon.autopilotmod", "Autopilot Mod", "4.8.3")]
+    [BepInPlugin("com.anon.autopilotmod", "Autopilot Mod", "4.8.4")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
@@ -223,9 +223,12 @@ namespace AutopilotMod
                     Component v = (Component)playerVehicle;
                     APData.CurrentRoll = v.transform.eulerAngles.z;
                     if (APData.CurrentRoll > 180f) APData.CurrentRoll -= 360f;
-                    if (APData.PlayerRB == null) APData.PlayerRB = v.GetComponent<Rigidbody>();
+                    var rb = v.GetComponent<Rigidbody>();
+                    if (APData.PlayerRB != rb) APData.PlayerRB = rb;
                 }
-            } catch {}
+            } catch (Exception ex) {
+                Plugin.Logger.LogError($"[HudSpyPatch] Error: {ex}");
+            }
         }
     }
 
@@ -256,24 +259,41 @@ namespace AutopilotMod
                         object cf = Traverse.Create(ac).Field("controlsFilter").GetValue();
                         if (cf != null) {
                             if (cf.GetType().Name.Contains("Helo")) return;
-                            MethodInfo getM = cf.GetType().GetMethod("GetFlyByWireParameters");
-                            MethodInfo setM = cf.GetType().GetMethod("SetFlyByWireParameters");
-                            if (getM != null && setM != null) {
-                                object result = getM.Invoke(cf, null);
-                                FieldInfo item1 = result.GetType().GetField("Item1");
-                                FieldInfo item2 = result.GetType().GetField("Item2");
-                                bool isEnabled = (bool)item1.GetValue(result);
-                                float[] values = (float[])item2.GetValue(result);
-                                bool newState = !isEnabled;
-                                setM.Invoke(cf, [newState, values]);
-                                APData.FBWDisabled = !newState;
-                                if (Plugin.EnableActionLogs.Value)
-                                    Plugin.Logger.LogInfo("Fly-By-Wire " + (newState ? "ENABLED" : "DISABLED"));
+                            try
+                            {
+                                MethodInfo getM = cf.GetType().GetMethod("GetFlyByWireParameters");
+                                MethodInfo setM = cf.GetType().GetMethod("SetFlyByWireParameters");
+                                
+                                if (getM != null && setM != null) {
+                                    object result = getM.Invoke(cf, null);
+
+                                    FieldInfo item1 = result.GetType().GetField("Item1", BindingFlags.Public | BindingFlags.Instance);
+                                    FieldInfo item2 = result.GetType().GetField("Item2", BindingFlags.Public | BindingFlags.Instance);
+                                    
+                                    if (item1 != null && item2 != null)
+                                    {
+                                        bool isEnabled = (bool)item1.GetValue(result);
+                                        float[] values = (float[])item2.GetValue(result);
+                                        bool newState = !isEnabled;
+                                        
+                                        setM.Invoke(cf, [newState, values]);
+                                        
+                                        APData.FBWDisabled = !newState;
+                                        if (Plugin.EnableActionLogs.Value)
+                                            Plugin.Logger.LogInfo("Fly-By-Wire " + (newState ? "ENABLED" : "DISABLED"));
+                                    }
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Plugin.Logger.LogError($"Failed to toggle Fly-By-Wire via reflection. Is the game version incompatible? Error: {ex}");
                             }
                         }
                     }
                 }
-            } catch {}
+            } catch (Exception ex) {
+                Plugin.Logger.LogError($"[InputHandlerPatch] Error: {ex}");
+            }
         }
     }
 
@@ -297,7 +317,9 @@ namespace AutopilotMod
                         Plugin.Logger.LogInfo("=== DUMP END ===");
                     }
                 }
-            } catch {}
+            } catch (Exception ex) {
+                 Plugin.Logger.LogError($"[DebugDumpPatch] Error: {ex}");
+            }
         }
     }
 
@@ -330,6 +352,20 @@ namespace AutopilotMod
         private static bool isJammerHoldingTrigger = false;
         private static int jammerDebugTimer = 0;
 
+        private static void ResetIntegrators()
+        {
+            altIntegral = 0f;
+            vsIntegral = 0f;
+            angleIntegral = 0f;
+            rollIntegral = 0f;
+            lastAltError = 0f;
+            lastVSError = 0f;
+            pitchSleepUntil = 0f; 
+            rollSleepUntil = 0f; 
+            isPitchSleeping = false; 
+            isRollSleeping = false;
+        }
+
         private static void Postfix(object __instance)
         {
             bool inputsModified = false;
@@ -342,9 +378,7 @@ namespace AutopilotMod
                 {
                     APData.TargetAlt = APData.CurrentAlt;
                     APData.TargetRoll = 0f;
-                    altIntegral = 0f; vsIntegral = 0f; angleIntegral = 0f; rollIntegral = 0f;
-                    lastAltError = 0f; lastVSError = 0f;
-                    pitchSleepUntil = 0f; rollSleepUntil = 0f; isPitchSleeping = false; isRollSleeping = false;
+                    ResetIntegrators(); // Fix 2: Reset integrals on AP Enable
                 }
                 wasEnabled = APData.Enabled;
             }
@@ -373,8 +407,8 @@ namespace AutopilotMod
                             float pct = energy / maxE;
 
                             // Debug Logging
-                            if (jammerDebugTimer++ > 300) {
-                                if(Plugin.ShowLogs.Value) Plugin.Logger.LogInfo($"[Jammer] E:{energy:F0}/{maxE:F0} Hold:{isJammerHoldingTrigger}");
+                            if (Plugin.ShowLogs.Value && jammerDebugTimer++ > 300) {
+                                Plugin.Logger.LogInfo($"[Jammer] E:{energy:F0}/{maxE:F0} Hold:{isJammerHoldingTrigger}");
                                 jammerDebugTimer = 0;
                             }
 
@@ -438,32 +472,50 @@ namespace AutopilotMod
                     {
                         APData.Enabled = false;
                         if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("AP OVERRIDE");
+                        ResetIntegrators(); // Reset on override
                     }
                     else
                     {
                         if (APData.PlayerRB != null) APData.PlayerRB.isKinematic = false;
 
-                        bool anyInput = false;
-                        if (Input.GetKey(Plugin.UpKey.Value)) { APData.TargetAlt += Plugin.AltStep.Value; anyInput = true; }
-                        if (Input.GetKey(Plugin.DownKey.Value)) { APData.TargetAlt -= Plugin.AltStep.Value; anyInput = true; }
-                        if (Input.GetKey(Plugin.BigUpKey.Value)) { APData.TargetAlt += Plugin.BigAltStep.Value; anyInput = true; }
+                        bool targetChanged = false;
+                        
+                        if (Input.GetKey(Plugin.UpKey.Value)) { APData.TargetAlt += Plugin.AltStep.Value; targetChanged = true; }
+                        if (Input.GetKey(Plugin.DownKey.Value)) { APData.TargetAlt -= Plugin.AltStep.Value; targetChanged = true; }
+                        if (Input.GetKey(Plugin.BigUpKey.Value)) { APData.TargetAlt += Plugin.BigAltStep.Value; targetChanged = true; }
                         if (Input.GetKey(Plugin.BigDownKey.Value)) {
                             float n = APData.TargetAlt - Plugin.BigAltStep.Value;
                             APData.TargetAlt = Mathf.Max(n, Plugin.MinAltitude.Value);
-                            anyInput = true;
+                            targetChanged = true;
                         }
+
                         if (Input.GetKey(Plugin.ClimbRateUpKey.Value)) APData.CurrentMaxClimbRate += Plugin.ClimbRateStep.Value;
                         if (Input.GetKey(Plugin.ClimbRateDownKey.Value)) APData.CurrentMaxClimbRate = Mathf.Max(0.5f, APData.CurrentMaxClimbRate - Plugin.ClimbRateStep.Value);
-                        if (Input.GetKey(Plugin.BankLevelKey.Value)) { APData.TargetRoll = 0f; anyInput = true; }
-                        else if (Input.GetKey(Plugin.BankLeftKey.Value)) { APData.TargetRoll += Plugin.BankStep.Value; anyInput = true; }
-                        else if (Input.GetKey(Plugin.BankRightKey.Value)) { APData.TargetRoll -= Plugin.BankStep.Value; anyInput = true; }
-                        if (anyInput) { pitchSleepUntil = 0f; rollSleepUntil = 0f; isPitchSleeping = false; isRollSleeping = false; }
+                        
+                        if (Input.GetKey(Plugin.BankLevelKey.Value)) { APData.TargetRoll = 0f; targetChanged = true; }
+                        else if (Input.GetKey(Plugin.BankLeftKey.Value)) { 
+                            // Fix 3: Normalize Roll Target 
+                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll + Plugin.BankStep.Value + 180f, 360f) - 180f; 
+                            targetChanged = true; 
+                        }
+                        else if (Input.GetKey(Plugin.BankRightKey.Value)) { 
+                            // Fix 3: Normalize Roll Target
+                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll - Plugin.BankStep.Value + 180f, 360f) - 180f; 
+                            targetChanged = true; 
+                        }
+
+                        if (targetChanged) 
+                        { 
+                            ResetIntegrators(); // Fix 2: Reset integrators on target change
+                        }
 
                         float currentVS = (APData.PlayerRB != null) ? APData.PlayerRB.velocity.y : 0f;
                         float noiseT = Time.time * Plugin.HumanizeSpeed.Value;
                         float pitchOut = 0f;
                         float rollOut = 0f;
-                        float dt = Time.fixedDeltaTime;
+                        
+                        // Fix 2: Use Time.deltaTime for stability
+                        float dt = Time.deltaTime; 
 
                         Vector3 fwd = APData.PlayerRB.transform.forward;
                         Vector3 flatFwd = Vector3.ProjectOnPlane(fwd, Vector3.up).normalized;
@@ -512,7 +564,8 @@ namespace AutopilotMod
                         }
 
                         float rollError = APData.TargetRoll - APData.CurrentRoll;
-                        if (rollError > 180f) rollError -= 360f; else if (rollError < -180f) rollError += 360f;
+                        rollError = Mathf.DeltaAngle(APData.CurrentRoll, APData.TargetRoll); // Safe comparison for roll
+
                         float rollRate = 0f;
                         if (APData.PlayerRB != null) rollRate = APData.PlayerRB.transform.InverseTransformDirection(APData.PlayerRB.angularVelocity).z * 57.29f;
 
@@ -567,7 +620,10 @@ namespace AutopilotMod
                     Console.WriteLine($"{Time.time:F2}\t{stickPitch:F4}\t{cvs:F4}\t{APData.CurrentAlt:F1}");
                 }
             }
-            catch { APData.Enabled = false; }
+            catch (Exception ex) { 
+                Plugin.Logger.LogError($"[ControlOverridePatch] Error: {ex}");
+                APData.Enabled = false; 
+            }
         }
     }
 
@@ -594,6 +650,13 @@ namespace AutopilotMod
                 float gap = Plugin.FuelLineSpacing.Value;
                 
                 if (lastAircraft != aircraft) {
+                    // Reset and cleanup previous UI elements if aircraft changes
+                    if (timerObj) UnityEngine.Object.Destroy(timerObj);
+                    if (rangeObj) UnityEngine.Object.Destroy(rangeObj);
+                    if (apObj) UnityEngine.Object.Destroy(apObj);
+                    if (ajObj) UnityEngine.Object.Destroy(ajObj);
+                    if (fbwObj) UnityEngine.Object.Destroy(fbwObj);
+                    
                     timerObj = null; rangeObj = null; apObj = null; ajObj = null; fbwObj = null;
                     lastAircraft = aircraft; 
                     fuelFlowEma = 0f; 
@@ -669,7 +732,9 @@ namespace AutopilotMod
                     fText.text = "FBW: OFF";
                     fText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                 } else { fText.text = ""; }
-            } catch {}
+            } catch (Exception ex) {
+                Plugin.Logger.LogError($"[VisualsStackPatch] Error: {ex}");
+            }
         }
     }
 }
