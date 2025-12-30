@@ -1,18 +1,18 @@
 # Nuclear Option Autopilot Mod
 
-Should be completely clientside.
+Currently the autopilot is rather basic. There are some additional features, such as Medusa auto jam (currently just an autofire mode, it won't select targets automatically or anything, it will only save your finger).
 
 ## Autopilot
 
 Autopilot controls roll and pitch. does not work on helicopters unless they fly like planes (tarantula probably works when propellers are horizontal. ibis not tested).
 
-Ascent/descent rate limits and target altitude can be configured with keyboard.
+Ascent/descent rate limits and target altitude can be configured with keyboard while flying.
 
 Target bank angle can be set so that plane turns in a circle. Should be useful for Medusa.
 
-The mod can also disable fly by wire, allowing you to perform cobra maneuvers and snap your wings instantly.
+The mod can also disable fly by wire, allowing you to perform cobra maneuvers or snap your wings.
 
-Displays current settings on the hud. The format is set altitude, set climbrate, set bankangle.
+Displays current settings on the HUD. The format is set altitude, set climbrate, set bankangle. For example, autopilot set to 3m altitude, at 40m/s climbrate, at 0 degrees bankangle will show up as `AP: 3 40 0` on the HUD.
 
 Has humanlike options that will help reduce its effectiveness. You can probably configure it so that it cannot seaskim at 2m ASL so easily.
 
