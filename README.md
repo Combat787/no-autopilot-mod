@@ -18,6 +18,15 @@ Has humanlike options that will help reduce its effectiveness. You can probably 
 
 PID values can be tuned further if you like, but the defaults should be quite effective.
 
+### features currently not in this mod
+- heading hold
+- autothrottle
+- waypoints and flying to them
+- nap of the earth flying
+- separate pid values for every aircraft
+- auto takeoff and landing
+- auto fighting
+
 ## Auto Jammer
 
 There is also an autojammer mode for Medusa, that will jam if capacitor is full. The autojammer will hit the fire button and there is no check for whether or not the jammer pods are selected, so you should make sure that they are. There is a check for the plane itself though, so you don't have to worry about accidentally enabling it on a different plane.
