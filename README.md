@@ -66,7 +66,7 @@ Also displays fuel time remaining and range. Unfortunately for non-metric system
 
 Oh, forgot to mention that all the other units are also displayed in metric system, this cannot be changed.
 
-## An example with Medusa
+## Usage example with Medusa
 
 After take-off, throttle kept at 100% for climb. Autopilot set to 10000m target altitude, 50 m/s climb rate and 30 degrees bank angle. Autopilot displays `AP: 10000 50 30`.
 
