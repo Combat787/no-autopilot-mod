@@ -9,7 +9,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.0")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.10.0")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
@@ -35,14 +35,6 @@ namespace AutopilotMod
         public static ConfigEntry<float> AutoJammerReleaseMin;
         public static ConfigEntry<float> AutoJammerReleaseMax;
 
-        // auto GCAS
-        public static ConfigEntry<bool> EnableGCAS;
-        public static ConfigEntry<float> GCAS_MaxG;
-        public static ConfigEntry<float> GCAS_WarnBuffer;
-        public static ConfigEntry<float> GCAS_AutoBuffer;
-        public static ConfigEntry<float> GCAS_MinAlt;
-        public static ConfigEntry<float> GCAS_Deadzone;
-
         // controls
         public static ConfigEntry<KeyCode> ToggleKey, ToggleFBWKey, UpKey, DownKey, BigUpKey, BigDownKey;
         public static ConfigEntry<KeyCode> ClimbRateUpKey, ClimbRateDownKey, BankLeftKey, BankRightKey, BankLevelKey, DumpKey;
@@ -62,6 +54,15 @@ namespace AutopilotMod
         // Roll
         public static ConfigEntry<float> RollP, RollI, RollD, RollMax, RollILimit;
         public static ConfigEntry<bool> InvertRoll, InvertPitch;
+
+        // auto GCAS
+        public static ConfigEntry<bool> EnableGCAS;
+        public static ConfigEntry<float> GCAS_MaxG;
+        public static ConfigEntry<float> GCAS_WarnBuffer;
+        public static ConfigEntry<float> GCAS_AutoBuffer;
+        public static ConfigEntry<float> GCAS_MinAlt;
+        public static ConfigEntry<float> GCAS_Deadzone;
+        public static ConfigEntry<float> GCAS_P, GCAS_I, GCAS_D, GCAS_ILimit;
 
         // humanise
         public static ConfigEntry<bool> HumanizeEnabled;
@@ -114,14 +115,6 @@ namespace AutopilotMod
             AutoJammerReleaseMin = Config.Bind("Auto Jammer", "7. Release Delay Min", 0.05f, "Seconds to hold after energy drops");
             AutoJammerReleaseMax = Config.Bind("Auto Jammer", "8. Release Delay Max", 0.2f, "Seconds to hold after energy drops");
 
-            // auto GCAS
-            EnableGCAS = Config.Bind("Auto GCAS", "1. Enable GCAS", true, "Auto pull up logic");
-            GCAS_MaxG = Config.Bind("Auto GCAS", "2. Max G-Pull", 5.0f, "Assumed G-Force capability for calculation");
-            GCAS_WarnBuffer = Config.Bind("Auto GCAS", "3. Warning Buffer", 20f, "Seconds warning before auto-pull");
-            GCAS_AutoBuffer = Config.Bind("Auto GCAS", "4. Auto-Pull Buffer", 2f, "Safety margin seconds");
-            GCAS_MinAlt = Config.Bind("Auto GCAS", "5. Hard Floor", 0.0f, "Absolute min altitude");
-            GCAS_Deadzone = Config.Bind("Settings", "6. GCAS Deadzone", 0.01f, "GCAS override deadzone");
-
             // Controls
             ToggleKey = Config.Bind("Controls", "01. Toggle AP Key", KeyCode.Equals, "AP On/Off");
             ToggleFBWKey = Config.Bind("Controls", "02. Toggle FBW Key", KeyCode.Delete, "Toggle Stability Assist");
@@ -171,6 +164,18 @@ namespace AutopilotMod
             RollD = Config.Bind("Tuning - Roll", "3. Roll D", 0.001f, "D");
             RollMax = Config.Bind("Tuning - Roll", "4. Roll Max Output", 1.0f, "Limit");
             RollILimit = Config.Bind("Tuning - Roll", "5. Roll I Limit", 50.0f, "Limit");
+
+            // auto GCAS
+            EnableGCAS = Config.Bind("Auto GCAS", "1. Enable GCAS", true, "Auto pull up logic");
+            GCAS_MaxG = Config.Bind("Auto GCAS", "2. Max G-Pull", 5.0f, "Assumed G-Force capability for calculation");
+            GCAS_WarnBuffer = Config.Bind("Auto GCAS", "3. Warning Buffer", 20f, "Seconds warning before auto-pull");
+            GCAS_AutoBuffer = Config.Bind("Auto GCAS", "4. Auto-Pull Buffer", 2f, "Safety margin seconds");
+            GCAS_MinAlt = Config.Bind("Auto GCAS", "5. Hard Floor", 0.0f, "Absolute min altitude");
+            GCAS_Deadzone = Config.Bind("Auto GCAS", "6. GCAS Deadzone", 0.5f, "GCAS override deadzone");
+            GCAS_P = Config.Bind("Auto GCAS", "7. GCAS P", 0.2f, "G Error -> Stick");
+            GCAS_I = Config.Bind("Auto GCAS", "8. GCAS I", 0.5f, "Builds pull over time");
+            GCAS_D = Config.Bind("Auto GCAS", "9. GCAS D", 0.05f, "Dampens G overshoot");
+            GCAS_ILimit = Config.Bind("Auto GCAS", "10. GCAS I Limit", 1.0f, "Max stick influence");
 
             // Humanize
             HumanizeEnabled = Config.Bind("Settings - Humanize", "01. Humanize Enabled", true, "Add imperfections");
@@ -363,27 +368,31 @@ namespace AutopilotMod
     [HarmonyPatch(typeof(PilotPlayerState), "PlayerAxisControls")]
     internal class ControlOverridePatch
     {
-        // --- PID INTEGRALS ---
+        // pid integrals
         private static float altIntegral = 0f;
         private static float vsIntegral = 0f;
         private static float angleIntegral = 0f;
         private static float rollIntegral = 0f;
+        
+        // gcas integral
+        private static float gcasIntegral = 0f;
 
-        // --- DERIVATIVE STATE ---
+        // derivatives
         private static float lastAltError = 0f;
         private static float lastVSError = 0f;
+        private static float lastGError = 0f; // NEW
                 
-        // --- GENERAL STATE ---
+        // states
         private static int logTimer = 0;
         private static bool wasEnabled = false;
         
-        // --- HUMANIZE STATE ---
+        // humanise state
         private static float pitchSleepUntil = 0f;
         private static float rollSleepUntil = 0f;
         private static bool isPitchSleeping = false;
         private static bool isRollSleeping = false;
 
-        // --- JAMMER STATE ---
+        // jammer state
         private static float jammerNextFireTime = 0f;
         private static float jammerNextReleaseTime = 0f;
         private static bool isJammerHoldingTrigger = false;
@@ -394,8 +403,10 @@ namespace AutopilotMod
             vsIntegral = 0f;
             angleIntegral = 0f;
             rollIntegral = 0f;
+            gcasIntegral = 0f;
             lastAltError = 0f;
             lastVSError = 0f;
+            lastGError = 0f;
             pitchSleepUntil = 0f; 
             rollSleepUntil = 0f; 
             isPitchSleeping = false; 
@@ -539,7 +550,7 @@ namespace AutopilotMod
                     }
                 }
 
-                // --- JAMMER LOGIC (UNCHANGED) ---
+                // jammer logic
                 if (APData.AutoJammerActive && APData.PlayerRB != null)
                 {
                     Aircraft ac = APData.PlayerRB.GetComponent<Aircraft>();
@@ -622,9 +633,8 @@ namespace AutopilotMod
                         float noiseT = Time.time * Plugin.HumanizeSpeed.Value;
                         float pitchOut = 0f;
                         float rollOut = 0f;
-                        
                         float dt = Time.deltaTime; 
-
+                        
                         Vector3 fwd = APData.PlayerRB.transform.forward;
                         Vector3 flatFwd = Vector3.ProjectOnPlane(fwd, Vector3.up).normalized;
                         float currentPitchDeg = Vector3.Angle(fwd, flatFwd);
@@ -650,34 +660,51 @@ namespace AutopilotMod
                             }
                         }
 
-                        // --- PITCH PID ---
-                        if (useHumanize && isPitchSleeping) {
-                            pitchOut = (Mathf.PerlinNoise(noiseT, 0f) - 0.5f) * Plugin.HumanizeStrength.Value * 0.5f;
-                        } else {
-                            float altError = APData.TargetAlt - APData.CurrentAlt;
-                            altIntegral = Mathf.Clamp(altIntegral + (altError * dt * Plugin.Conf_Alt_I.Value), -Plugin.Conf_Alt_ILimit.Value, Plugin.Conf_Alt_ILimit.Value);
-                            float altD = (altError - lastAltError) / dt; lastAltError = altError;
-                            float targetVS = Mathf.Clamp((altError * Plugin.Conf_Alt_P.Value) + altIntegral + (altD * Plugin.Conf_Alt_D.Value), -APData.CurrentMaxClimbRate, APData.CurrentMaxClimbRate);
-                            
-                            float vsError = targetVS - currentVS;
-                            vsIntegral = Mathf.Clamp(vsIntegral + (vsError * dt * Plugin.Conf_VS_I.Value), -Plugin.Conf_VS_ILimit.Value, Plugin.Conf_VS_ILimit.Value);
-                            float vsD = (vsError - lastVSError) / dt; lastVSError = vsError;
-                            float targetPitchDeg = Mathf.Clamp((vsError * Plugin.Conf_VS_P.Value) + vsIntegral + (vsD * Plugin.Conf_VS_D.Value), -Plugin.Conf_VS_MaxAngle.Value, Plugin.Conf_VS_MaxAngle.Value);
+                        // gcas pid
+                        if (APData.GCASActive)
+                        {
+                            float targetG = Plugin.GCAS_MaxG.Value;
+                            float gError = targetG - currentG;
 
-                            float pitchError = targetPitchDeg - currentPitchDeg;
-                            angleIntegral = Mathf.Clamp(angleIntegral + (pitchError * dt * Plugin.Conf_Angle_I.Value), -Plugin.Conf_Angle_ILimit.Value, Plugin.Conf_Angle_ILimit.Value);
-                            float stickRaw = (pitchError * Plugin.Conf_Angle_P.Value) + angleIntegral - (pitchRate * Plugin.Conf_Angle_D.Value);
+                            gcasIntegral = Mathf.Clamp(gcasIntegral + (gError * dt * Plugin.GCAS_I.Value), -Plugin.GCAS_ILimit.Value, Plugin.GCAS_ILimit.Value);
                             
-                            if (currentG > Plugin.GCAS_MaxG.Value && stickRaw > 0)
-                            {
-                                float overG = currentG - Plugin.GCAS_MaxG.Value;
-                                stickRaw -= overG * 0.2f; 
+                            float gD = (gError - lastGError) / dt;
+                            lastGError = gError;
+
+                            // Calculate stick directly from G error
+                            float stickOut = (gError * Plugin.GCAS_P.Value) + gcasIntegral + (gD * Plugin.GCAS_D.Value);
+                            
+                            pitchOut = Mathf.Clamp(stickOut, -1f, 1f);
+                        }
+                        // normal mode
+                        else 
+                        {
+                            if (useHumanize && isPitchSleeping) {
+                                pitchOut = (Mathf.PerlinNoise(noiseT, 0f) - 0.5f) * Plugin.HumanizeStrength.Value * 0.5f;
+                            } 
+                            else {
+                                float altError = APData.TargetAlt - APData.CurrentAlt;
+                                altIntegral = Mathf.Clamp(altIntegral + (altError * dt * Plugin.Conf_Alt_I.Value), -Plugin.Conf_Alt_ILimit.Value, Plugin.Conf_Alt_ILimit.Value);
+                                float altD = (altError - lastAltError) / dt; lastAltError = altError;
+                                
+                                float targetVS = Mathf.Clamp((altError * Plugin.Conf_Alt_P.Value) + altIntegral + (altD * Plugin.Conf_Alt_D.Value), -APData.CurrentMaxClimbRate, APData.CurrentMaxClimbRate);
+                                
+                                float vsError = targetVS - currentVS;
+                                vsIntegral = Mathf.Clamp(vsIntegral + (vsError * dt * Plugin.Conf_VS_I.Value), -Plugin.Conf_VS_ILimit.Value, Plugin.Conf_VS_ILimit.Value);
+                                float vsD = (vsError - lastVSError) / dt; lastVSError = vsError;
+                                
+                                float targetPitchDeg = Mathf.Clamp((vsError * Plugin.Conf_VS_P.Value) + vsIntegral + (vsD * Plugin.Conf_VS_D.Value), -Plugin.Conf_VS_MaxAngle.Value, Plugin.Conf_VS_MaxAngle.Value);
+
+                                float pitchError = targetPitchDeg - currentPitchDeg;
+                                angleIntegral = Mathf.Clamp(angleIntegral + (pitchError * dt * Plugin.Conf_Angle_I.Value), -Plugin.Conf_Angle_ILimit.Value, Plugin.Conf_Angle_ILimit.Value);
+                                
+                                float stickRaw = (pitchError * Plugin.Conf_Angle_P.Value) + angleIntegral - (pitchRate * Plugin.Conf_Angle_D.Value);
+
+                                pitchOut = Mathf.Clamp(stickRaw, -1f, 1f);
+
+                                if (Plugin.InvertPitch.Value) pitchOut = -pitchOut;
+                                if (useHumanize) pitchOut += (Mathf.PerlinNoise(noiseT, 0f) - 0.5f) * 2f * Plugin.HumanizeStrength.Value;
                             }
-
-                            pitchOut = Mathf.Clamp(stickRaw, -1f, 1f);
-
-                            if (Plugin.InvertPitch.Value) pitchOut = -pitchOut;
-                            if (useHumanize) pitchOut += (Mathf.PerlinNoise(noiseT, 0f) - 0.5f) * 2f * Plugin.HumanizeStrength.Value;
                         }
 
                         // Roll Logic
