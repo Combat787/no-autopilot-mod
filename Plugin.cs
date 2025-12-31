@@ -77,8 +77,8 @@ namespace AutopilotMod
             ColorCrit = Config.Bind("Visuals - Colors", "5. Color Critical", "#FF0000", "Red");
             ColorInfo = Config.Bind("Visuals - Colors", "6. Color Info", "#00FFFF", "Cyan");
 
-            FuelOffsetY = Config.Bind("Visuals - Layout", "1. Stack Start Y", -15f, "Vertical position");
-            FuelLineSpacing = Config.Bind("Visuals - Layout", "2. Line Spacing", 12f, "Vertical gap");
+            FuelOffsetY = Config.Bind("Visuals - Layout", "1. Stack Start Y", -20f, "Vertical position");
+            FuelLineSpacing = Config.Bind("Visuals - Layout", "2. Line Spacing", 20f, "Vertical gap");
             
             ShowExtraInfo = Config.Bind("Visuals", "Show Fuel/AP Info", true, "Show extra info on Fuel Gauge");
 
