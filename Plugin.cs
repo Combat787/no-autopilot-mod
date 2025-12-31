@@ -1,6 +1,5 @@
 using System;
 using System.Reflection;
-using System.Collections.Generic;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -10,7 +9,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.8.5")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.0")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
