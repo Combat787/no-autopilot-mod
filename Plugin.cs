@@ -37,10 +37,11 @@ namespace AutopilotMod
 
         // auto GCAS
         public static ConfigEntry<bool> EnableGCAS;
-        public static ConfigEntry<float> GCAS_MaxG; // How hard to pull (e.g., 5G or 7G)
-        public static ConfigEntry<float> GCAS_WarnBuffer; // Seconds before auto-pull to warn
-        public static ConfigEntry<float> GCAS_AutoBuffer; // Extra seconds margin for auto-pull
-        public static ConfigEntry<float> GCAS_MinAlt;     // Hard floor
+        public static ConfigEntry<float> GCAS_MaxG;
+        public static ConfigEntry<float> GCAS_WarnBuffer;
+        public static ConfigEntry<float> GCAS_AutoBuffer;
+        public static ConfigEntry<float> GCAS_MinAlt;
+        public static ConfigEntry<float> GCAS_Deadzone;
 
         // controls
         public static ConfigEntry<KeyCode> ToggleKey, ToggleFBWKey, UpKey, DownKey, BigUpKey, BigDownKey;
@@ -115,10 +116,11 @@ namespace AutopilotMod
 
             // auto GCAS
             EnableGCAS = Config.Bind("Auto GCAS", "1. Enable GCAS", true, "Auto pull up logic");
-            GCAS_MaxG = Config.Bind("Auto GCAS", "2. Max G-Pull", 6.0f, "Assumed G-Force capability for calculation");
-            GCAS_WarnBuffer = Config.Bind("Auto GCAS", "3. Warning Buffer", 2.0f, "Seconds warning before auto-pull");
-            GCAS_AutoBuffer = Config.Bind("Auto GCAS", "4. Auto-Pull Buffer", 0.5f, "Safety margin seconds");
-            GCAS_MinAlt = Config.Bind("Auto GCAS", "5. Hard Floor", 30.0f, "Absolute min altitude");
+            GCAS_MaxG = Config.Bind("Auto GCAS", "2. Max G-Pull", 5.0f, "Assumed G-Force capability for calculation");
+            GCAS_WarnBuffer = Config.Bind("Auto GCAS", "3. Warning Buffer", 20f, "Seconds warning before auto-pull");
+            GCAS_AutoBuffer = Config.Bind("Auto GCAS", "4. Auto-Pull Buffer", 2f, "Safety margin seconds");
+            GCAS_MinAlt = Config.Bind("Auto GCAS", "5. Hard Floor", 0.0f, "Absolute min altitude");
+            GCAS_Deadzone = Config.Bind("Settings", "6. GCAS Deadzone", 0.01f, "GCAS override deadzone");
 
             // Controls
             ToggleKey = Config.Bind("Controls", "01. Toggle AP Key", KeyCode.Equals, "AP On/Off");
@@ -385,7 +387,6 @@ namespace AutopilotMod
         private static float jammerNextFireTime = 0f;
         private static float jammerNextReleaseTime = 0f;
         private static bool isJammerHoldingTrigger = false;
-        private static int jammerDebugTimer = 0;
 
         private static void ResetIntegrators()
         {
@@ -405,12 +406,10 @@ namespace AutopilotMod
         {
             if (APData.CurrentMaxClimbRate < 0f) APData.CurrentMaxClimbRate = Plugin.DefaultMaxClimbRate.Value;
 
-            // --- Enable/Disable Logic ---
             if (APData.Enabled != wasEnabled)
             {
                 if (APData.Enabled)
                 {
-                    // If enabling normally (not via GCAS), capture current state
                     if (!APData.GCASActive) 
                     {
                         APData.TargetAlt = APData.CurrentAlt;
@@ -432,66 +431,71 @@ namespace AutopilotMod
                 float stickPitch = tInputWrapper.Field("pitch").GetValue<float>();
                 float stickRoll = tInputWrapper.Field("roll").GetValue<float>();
 
-                // auto gcas
-                APData.GCASWarning = false; // Reset warning frame
+                APData.GCASWarning = false;
+
+                float currentG = 1f;
+                Aircraft acRef = null;
+                if (APData.PlayerRB != null) {
+                    acRef = APData.PlayerRB.GetComponent<Aircraft>();
+                    if (acRef != null) {
+                        try {
+                            System.Collections.IList pilots = Traverse.Create(acRef).Field("pilots").GetValue<System.Collections.IList>();
+                            if (pilots != null && pilots.Count > 0) {
+                                object p0 = pilots[0];
+                                Vector3 pAccel = (Vector3)Traverse.Create(p0).Method("GetAccel").GetValue();
+                                currentG = Vector3.Dot(pAccel + Vector3.up, acRef.transform.up);
+                            }
+                        } catch {}
+                    }
+                }
 
                 if (Plugin.EnableGCAS.Value && APData.PlayerRB != null)
                 {
-                    bool pilotInput = Mathf.Abs(stickPitch) > Plugin.StickDeadzone.Value || Mathf.Abs(stickRoll) > Plugin.StickDeadzone.Value;
+                    bool gearDown = false;
+                    if (acRef != null) {
+                        object gs = Traverse.Create(acRef).Field("gearState").GetValue();
+                        if (gs != null && !gs.ToString().Contains("LockedRetracted")) {
+                            gearDown = true;
+                        }
+                    }
+
+                    bool pilotInput = Mathf.Abs(stickPitch) > Plugin.GCAS_Deadzone.Value || Mathf.Abs(stickRoll) > Plugin.GCAS_Deadzone.Value;
                     
-                    // Check for Pilot Override
-                    if (pilotInput)
+                    if (pilotInput || gearDown)
                     {
                         if (APData.GCASActive)
                         {
                             APData.GCASActive = false;
                             APData.Enabled = false;
-                            if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS OVERRIDE BY PILOT");
+                            if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS OVERRIDE (Pilot/Gear)");
                         }
                     }
                     else
                     {
-                        // Physics Calculation
                         float speed = APData.PlayerRB.velocity.magnitude;
-                        
-                        // Only run calculations if moving fast enough to matter (> 50kph approx)
-                        if (speed > 15f) 
+                        if (speed > 15f)
                         {
                             Vector3 velocity = APData.PlayerRB.velocity;
                             Vector3 fwd = APData.PlayerRB.transform.forward;
 
-                            // Calculate "Time to Pull Up" based on Max G
-                            // Formula: t = (Velocity * Theta_Rad) / Acceleration
                             float diveAngle = 0f;
-                            if (velocity.y < -1f) // Only calculate if dropping
-                            {
+                            if (velocity.y < -1f) 
                                 diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
-                            }
 
-                            // Use Configured Max G (subtract 1G for gravity)
                             float availAccel = Mathf.Max(1f, Plugin.GCAS_MaxG.Value - 1f) * 9.81f;
                             float timeToLevel = (speed * (diveAngle * Mathf.Deg2Rad)) / availAccel;
 
-                            // Calculate Thresholds
                             float autoThresholdTime = timeToLevel + Plugin.GCAS_AutoBuffer.Value;
                             float warnThresholdTime = timeToLevel + Plugin.GCAS_WarnBuffer.Value;
-
-                            // Raycast Prediction
-                            float lookAheadDist = speed * (warnThresholdTime + 2.0f); // Look a bit past warning
+                            float lookAheadDist = speed * (warnThresholdTime + 2.0f); 
                             
                             float timeToImpact = 999f;
-
-                            // Thick raycast along velocity vector
                             if (Physics.SphereCast(APData.PlayerRB.position, 5f, velocity.normalized, out RaycastHit hit, lookAheadDist))
                             {
-                                // Hit something static (Terrain/Buildings)
                                 if (hit.collider.gameObject.isStatic || hit.collider.gameObject.layer == 0)
-                                {
                                     timeToImpact = hit.distance / speed;
-                                }
                             }
                             
-                            // Hard Floor Check
                             float timeToFloor = 999f;
                             if (velocity.y < -5f) {
                                 float distToFloor = APData.CurrentAlt - Plugin.GCAS_MinAlt.Value;
@@ -499,53 +503,35 @@ namespace AutopilotMod
                                 else timeToFloor = 0f;
                             }
 
-                            // Final lowest time
                             float finalTTA = Mathf.Min(timeToImpact, timeToFloor);
-
-                            // ---------------- LOGIC ----------------
                             
                             if (APData.GCASActive)
                             {
-                                // RECOVERY LOGIC (Hysteresis)
-                                // 1. Must be climbing (> 5m/s)
-                                // 2. Pitch must be positive (> 5 deg)
-                                // 3. Path ahead must be clear (Time to impact > Warn Threshold)
-                                
                                 bool climbing = velocity.y > 5f;
                                 bool noseUp = fwd.y > 0.1f;
                                 bool pathClear = finalTTA > warnThresholdTime;
 
-                                if (climbing && noseUp && pathClear)
-                                {
+                                if (climbing && noseUp && pathClear) {
                                     APData.GCASActive = false;
                                     APData.Enabled = false;
                                     if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS RECOVERED");
-                                }
-                                else
-                                {
-                                    // MAINTAIN EVASIVE ACTION
+                                } else {
                                     APData.TargetRoll = 0f;
-                                    APData.TargetAlt = APData.CurrentAlt + 500f; // Keep target above us
-                                    APData.CurrentMaxClimbRate = 100f; // Full power
-                                    APData.GCASWarning = true; // Keep HUD red
+                                    APData.TargetAlt = APData.CurrentAlt + 500f; 
+                                    APData.CurrentMaxClimbRate = 100f; 
+                                    APData.GCASWarning = true; 
                                 }
                             }
                             else
                             {
-                                // DETECTION LOGIC
-                                if (finalTTA < autoThresholdTime)
-                                {
-                                    // IMPACT IMMINENT -> ENGAGE
+                                if (finalTTA < autoThresholdTime) {
                                     APData.Enabled = true;
                                     APData.GCASActive = true;
                                     APData.TargetRoll = 0f;
                                     APData.TargetAlt = APData.CurrentAlt + 500f;
                                     ResetIntegrators();
-                                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogWarning($"GCAS ENGAGE! TTA:{finalTTA:F1}s Req:{timeToLevel:F1}s");
-                                }
-                                else if (finalTTA < warnThresholdTime)
-                                {
-                                    // IMPACT POSSIBLE -> WARN
+                                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogWarning($"GCAS ENGAGE! TTA:{finalTTA:F1}s");
+                                } else if (finalTTA < warnThresholdTime) {
                                     APData.GCASWarning = true;
                                 }
                             }
@@ -553,44 +539,33 @@ namespace AutopilotMod
                     }
                 }
 
-                // jammer
+                // --- JAMMER LOGIC (UNCHANGED) ---
                 if (APData.AutoJammerActive && APData.PlayerRB != null)
                 {
                     Aircraft ac = APData.PlayerRB.GetComponent<Aircraft>();
                     if (ac != null && ac.name.Contains("EW1"))
                     {
                         object ps = Traverse.Create(ac).Field("powerSupply").GetValue();
-                        if (ps != null)
-                        {
+                        if (ps != null) {
                             float energy = Traverse.Create(ps).Field("charge").GetValue<float>();
                             float maxE = Traverse.Create(ps).Field("maxCharge").GetValue<float>();
                             if (maxE <= 1f) maxE = 100f;
                             float pct = energy / maxE;
 
-                            if (Plugin.ShowLogs.Value && jammerDebugTimer++ > 300) {
-                                Plugin.Logger.LogInfo($"[Jammer] E:{energy:F0}/{maxE:F0} Hold:{isJammerHoldingTrigger}");
-                                jammerDebugTimer = 0;
-                            }
-
                             bool thresholdMet = (pct >= Plugin.AutoJammerThreshold.Value);
 
-                            if (thresholdMet)
-                            {
+                            if (thresholdMet) {
                                 jammerNextReleaseTime = 0f;
-                                if (!isJammerHoldingTrigger)
-                                {
+                                if (!isJammerHoldingTrigger) {
                                     if (jammerNextFireTime == 0f) {
                                         float delay = Plugin.AutoJammerHumanize.Value ? UnityEngine.Random.Range(Plugin.AutoJammerMinDelay.Value, Plugin.AutoJammerMaxDelay.Value) : 0f;
                                         jammerNextFireTime = Time.time + delay;
                                     }
                                     if (Time.time >= jammerNextFireTime) { isJammerHoldingTrigger = true; jammerNextFireTime = 0f; }
                                 }
-                            }
-                            else
-                            {
+                            } else {
                                 jammerNextFireTime = 0f;
-                                if (isJammerHoldingTrigger)
-                                {
+                                if (isJammerHoldingTrigger) {
                                     if (jammerNextReleaseTime == 0f) {
                                         float delay = Plugin.AutoJammerHumanize.Value ? UnityEngine.Random.Range(Plugin.AutoJammerReleaseMin.Value, Plugin.AutoJammerReleaseMax.Value) : 0f;
                                         jammerNextReleaseTime = Time.time + delay;
@@ -610,7 +585,6 @@ namespace AutopilotMod
                 // --- AUTOPILOT CORE ---
                 if (APData.Enabled)
                 {
-                    // Manual Override (Redundant catch-all for normal flight)
                     if (Mathf.Abs(stickPitch) > Plugin.StickDeadzone.Value || Mathf.Abs(stickRoll) > Plugin.StickDeadzone.Value)
                     {
                         APData.Enabled = false;
@@ -622,7 +596,6 @@ namespace AutopilotMod
                     {
                         if (APData.PlayerRB != null) APData.PlayerRB.isKinematic = false;
                         
-                        // Prevent manual target changes if GCAS is saving us
                         if (!APData.GCASActive)
                         {
                             if (Input.GetKey(Plugin.UpKey.Value)) APData.TargetAlt += Plugin.AltStep.Value;
@@ -658,12 +631,10 @@ namespace AutopilotMod
                         if (fwd.y < 0) currentPitchDeg = -currentPitchDeg;
                         float pitchRate = APData.PlayerRB.transform.InverseTransformDirection(APData.PlayerRB.angularVelocity).x * Mathf.Rad2Deg;
 
-                        // FORCE PRECISION (No Humanize) if GCAS is Active
                         bool useHumanize = Plugin.HumanizeEnabled.Value && !APData.GCASActive;
 
-                        // --- HUMANIZE LOGIC ---
-                        if (useHumanize)
-                        {
+                        // Humanize Logic
+                        if (useHumanize) {
                             float altErrorAbs = Mathf.Abs(APData.TargetAlt - APData.CurrentAlt);
                             float vsAbs = Mathf.Abs(currentVS);
                             float altScale = APData.CurrentAlt * Plugin.Hum_Alt_Scale.Value;
@@ -674,9 +645,8 @@ namespace AutopilotMod
                                     isPitchSleeping = true;
                                 }
                             } else {
-                                if (altErrorAbs > (Plugin.Hum_Alt_Outer.Value + altScale) || vsAbs > Plugin.Hum_VS_Outer.Value || Time.time > pitchSleepUntil) {
+                                if (altErrorAbs > (Plugin.Hum_Alt_Outer.Value + altScale) || vsAbs > Plugin.Hum_VS_Outer.Value || Time.time > pitchSleepUntil) 
                                     isPitchSleeping = false;
-                                }
                             }
                         }
 
@@ -697,20 +667,25 @@ namespace AutopilotMod
                             float pitchError = targetPitchDeg - currentPitchDeg;
                             angleIntegral = Mathf.Clamp(angleIntegral + (pitchError * dt * Plugin.Conf_Angle_I.Value), -Plugin.Conf_Angle_ILimit.Value, Plugin.Conf_Angle_ILimit.Value);
                             float stickRaw = (pitchError * Plugin.Conf_Angle_P.Value) + angleIntegral - (pitchRate * Plugin.Conf_Angle_D.Value);
+                            
+                            if (currentG > Plugin.GCAS_MaxG.Value && stickRaw > 0)
+                            {
+                                float overG = currentG - Plugin.GCAS_MaxG.Value;
+                                stickRaw -= overG * 0.2f; 
+                            }
+
                             pitchOut = Mathf.Clamp(stickRaw, -1f, 1f);
 
                             if (Plugin.InvertPitch.Value) pitchOut = -pitchOut;
                             if (useHumanize) pitchOut += (Mathf.PerlinNoise(noiseT, 0f) - 0.5f) * 2f * Plugin.HumanizeStrength.Value;
                         }
 
-                        float rollError = APData.TargetRoll - APData.CurrentRoll;
-                        rollError = Mathf.DeltaAngle(APData.CurrentRoll, APData.TargetRoll);
-
+                        // Roll Logic
+                        float rollError = Mathf.DeltaAngle(APData.CurrentRoll, APData.TargetRoll);
                         float rollRate = 0f;
                         if (APData.PlayerRB != null) rollRate = APData.PlayerRB.transform.InverseTransformDirection(APData.PlayerRB.angularVelocity).z * 57.29f;
 
-                        if (useHumanize)
-                        {
+                        if (useHumanize) {
                             float rErr = Mathf.Abs(rollError);
                             float rRate = Mathf.Abs(rollRate);
                             if (!isRollSleeping) {
@@ -720,13 +695,11 @@ namespace AutopilotMod
                                     isRollSleeping = true;
                                 }
                             } else {
-                                if (rErr > Plugin.Hum_Roll_Outer.Value || rRate > Plugin.Hum_RollRate_Outer.Value || Time.time > rollSleepUntil) {
+                                if (rErr > Plugin.Hum_Roll_Outer.Value || rRate > Plugin.Hum_RollRate_Outer.Value || Time.time > rollSleepUntil) 
                                     isRollSleeping = false;
-                                }
                             }
                         }
 
-                        // --- ROLL PID ---
                         if (useHumanize && isRollSleeping) {
                             rollOut = (Mathf.PerlinNoise(0f, noiseT) - 0.5f) * Plugin.HumanizeStrength.Value * 0.5f;
                         } else {
@@ -747,7 +720,7 @@ namespace AutopilotMod
                             logTimer++;
                             if (logTimer > Plugin.LogRefreshRate.Value) {
                                 logTimer = 0;
-                                Plugin.Logger.LogInfo($"[AP] GCAS:{APData.GCASActive} Alt:{APData.CurrentAlt:F0} Warn:{APData.GCASWarning}");
+                                Plugin.Logger.LogInfo($"[AP] GCAS:{APData.GCASActive} G:{currentG:F1} Alt:{APData.CurrentAlt:F0}");
                             }
                         }
                     }
@@ -892,19 +865,19 @@ namespace AutopilotMod
 
                 if (APData.Enabled) {
                     if (APData.GCASActive) {
-                        aText.text = "!!! PULL UP !!!";
+                        aText.text = "GCAS ENGAGED";
                         aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } else if (APData.GCASWarning) {
-                        aText.text = "TERRAIN AHEAD";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
+                        aText.text = "PULL UP";
+                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.red);
                     } else {
                         aText.text = $"A: {APData.TargetAlt:F0} {APData.CurrentMaxClimbRate:F0} {APData.TargetRoll:F0}";
                         aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
                     }
                 } else {
                     if (APData.GCASWarning) {
-                        aText.text = "TERRAIN AHEAD";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
+                        aText.text = "PULL UP";
+                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.red);
                     } else { aText.text = ""; }
                 }
                 
