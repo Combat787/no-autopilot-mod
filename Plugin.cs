@@ -60,7 +60,6 @@ namespace AutopilotMod
         public static ConfigEntry<float> GCAS_MaxG;
         public static ConfigEntry<float> GCAS_WarnBuffer;
         public static ConfigEntry<float> GCAS_AutoBuffer;
-        public static ConfigEntry<float> GCAS_Clearance;
         public static ConfigEntry<float> GCAS_Deadzone;
         public static ConfigEntry<float> GCAS_P, GCAS_I, GCAS_D, GCAS_ILimit;
 
@@ -170,7 +169,6 @@ namespace AutopilotMod
             GCAS_MaxG = Config.Bind("Auto GCAS", "2. Max G-Pull", 5.0f, "Assumed G-Force capability for calculation");
             GCAS_WarnBuffer = Config.Bind("Auto GCAS", "3. Warning Buffer", 20.0f, "Seconds warning before auto-pull");
             GCAS_AutoBuffer = Config.Bind("Auto GCAS", "4. Auto-Pull Buffer", 2.0f, "Safety margin seconds");
-            GCAS_Clearance = Config.Bind("Auto GCAS", "5. GCAS Clearance", 3.0f, "Clearance distance");
             GCAS_Deadzone = Config.Bind("Auto GCAS", "6. GCAS Deadzone", 0.5f, "GCAS override deadzone");
             GCAS_P = Config.Bind("GCAS PID", "1. GCAS P", 0.1f, "G Error -> Stick");
             GCAS_I = Config.Bind("GCAS PID", "2. GCAS I", 1.0f, "Builds pull over time");
@@ -488,7 +486,7 @@ namespace AutopilotMod
                         {
                             Vector3 velocity = APData.PlayerRB.velocity;
                             float gAccel = Plugin.GCAS_MaxG.Value * 9.81f; 
-                            float turnRadius = (speed * speed) / gAccel;
+                            float turnRadius = speed * speed / gAccel;
                             
                             float bufferDist = (speed * Plugin.GCAS_AutoBuffer.Value) + 50f;
                             float warnDist = speed * Plugin.GCAS_WarnBuffer.Value;
@@ -562,7 +560,6 @@ namespace AutopilotMod
                                     APData.GCASActive = true;
                                     APData.TargetRoll = 0f;
                                     APData.TargetAlt = APData.CurrentAlt + 2000f;
-                                    ResetIntegrators();
                                 }
                                 else if (warningZone)
                                 {
