@@ -488,43 +488,67 @@ namespace AutopilotMod
                         {
                             Vector3 velocity = APData.PlayerRB.velocity;
                             float descentRate = (velocity.y < 0) ? Mathf.Abs(velocity.y) : 0f;
-                            float currentAltAgl = APData.CurrentAlt;
+                            float currentAltAgl = APData.CurrentAlt; // Altitude MSL
+
+                            // 1. SETUP PHYSICS
+                            // Turn Radius = V^2 / a
                             float gAccel = Plugin.GCAS_MaxG.Value * 9.81f; 
-                            float turnRadius = (speed * speed) / gAccel;
+                            float turnRadius = speed * speed / gAccel;
                             
-                            float c = Plugin.GCAS_Clearance.Value;
+                            // User selected clearance & Lag
+                            float c = Plugin.GCAS_Clearance.Value;;
                             float lagDist = speed * Plugin.GCAS_AutoBuffer.Value;
 
-                            float sensorRange = (speed * Plugin.GCAS_WarnBuffer.Value) + 1000f;
-                            Vector3 castStart = APData.PlayerRB.position + (velocity.normalized * 10f);
-                            
                             bool dangerImminent = false;
                             bool warningZone = false;
 
+                            float sensorRange = Mathf.Min(5000f, (speed * Plugin.GCAS_WarnBuffer.Value) + 1000f);
+                            Vector3 castStart = APData.PlayerRB.position + (velocity.normalized * 10f);
+                            
                             if (Physics.SphereCast(castStart, 1f, velocity.normalized, out RaycastHit hit, sensorRange) && hit.transform.root != APData.PlayerRB.transform.root)
                             {
-                                float r = hit.distance + 10f;
-                                float terrainAlt = hit.point.y;
-                                float aircraftAlt = APData.PlayerRB.position.y;
-
-                                float curveHeight = (r < lagDist) ? 0 : (Mathf.Pow(r - lagDist, 2) / (2 * turnRadius));
-                                float requiredClearance = c + curveHeight;
-
-                                if ((aircraftAlt - terrainAlt) < requiredClearance) dangerImminent = true;
-                                else if ((aircraftAlt - terrainAlt) < (requiredClearance + 50f)) warningZone = true;
-                            }
-                            else if (velocity.y < -0.5f) 
-                            {
-                                // If we are descending and the radar sees nothing, we check against Y = 0 (Sea Level)
-                                float r_sea = currentAltAgl / Mathf.Max(0.01f, Mathf.Sin(Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up)) * Mathf.Deg2Rad));
-                                float curveHeightSea = (r_sea < lagDist) ? 0 : (Mathf.Pow(r_sea - lagDist, 2) / (2 * turnRadius));
+                                // Distance to the obstacle
+                                float r = hit.distance; 
                                 
-                                if (currentAltAgl < (c + curveHeightSea)) dangerImminent = true;
+                                // Calculate the "Ski Jump" curve height at this distance
+                                // h = (Distance - Lag)^2 / (2 * Radius)
+                                float curveHeight = (r < lagDist) ? 0 : (Mathf.Pow(r - lagDist, 2) / (2 * turnRadius));
+                                
+                                // Current Height above the specific terrain point we hit
+                                float heightAboveTerrain = APData.PlayerRB.position.y - hit.point.y;
+
+                                // Condition: Are we below the safety curve?
+                                // Safe if: Height > (Clearance + Curve)
+                                if (heightAboveTerrain < (c + curveHeight)) 
+                                {
+                                    dangerImminent = true;
+                                    if (Plugin.EnableActionLogs.Value && !APData.GCASActive)
+                                        Plugin.Logger.LogWarning($"TFR WALL: H:{heightAboveTerrain:F0} < Req:{curveHeight:F0}");
+                                }
+                                else if (heightAboveTerrain < (c + curveHeight + 100f)) 
+                                {
+                                    warningZone = true;
+                                }
+                            }
+
+                            else if (descentRate > 1f) 
+                            {
+                                float diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
+                                float geometricAltLoss = turnRadius * (1f - Mathf.Cos(diveAngle * Mathf.Deg2Rad));
+                                
+                                float verticalBuffer = (descentRate * Plugin.GCAS_AutoBuffer.Value) + c;
+
+                                if (currentAltAgl < (geometricAltLoss + verticalBuffer))
+                                {
+                                    dangerImminent = true;
+                                    if (Plugin.EnableActionLogs.Value && !APData.GCASActive)
+                                        Plugin.Logger.LogWarning($"TFR WATER: Alt:{currentAltAgl:F0} < Loss:{geometricAltLoss:F0}");
+                                }
                             }
 
                             if (APData.GCASActive)
                             {
-                                if (!dangerImminent || velocity.y > 5f) 
+                                if (!dangerImminent) 
                                 {
                                     APData.GCASActive = false;
                                     APData.Enabled = false;
@@ -533,7 +557,7 @@ namespace AutopilotMod
                                 {
                                     APData.GCASWarning = true;
                                     APData.TargetRoll = 0f;
-                                    APData.TargetAlt = APData.CurrentAlt + 1000f;
+                                    APData.TargetAlt = APData.CurrentAlt + 2000f;
                                 }
                             }
                             else 
@@ -543,7 +567,7 @@ namespace AutopilotMod
                                     APData.Enabled = true;
                                     APData.GCASActive = true;
                                     APData.TargetRoll = 0f;
-                                    APData.TargetAlt = APData.CurrentAlt + 1000f;
+                                    APData.TargetAlt = APData.CurrentAlt + 2000f;
                                     ResetIntegrators();
                                 }
                                 else if (warningZone)
