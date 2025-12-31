@@ -504,15 +504,18 @@ namespace AutopilotMod
                                     APData.TargetAlt = APData.CurrentAlt + 2000f;
                                 }
                             }
+                            // detection logic
                             else 
                             {
                                 float diveAngle = 0f;
                                 if (velocity.y < -1f) 
                                     diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
 
+                                float requiredSensorRange = (speed * Plugin.GCAS_WarnBuffer.Value) + 3000f;
+                                
                                 Vector3 castStart = APData.PlayerRB.position + (velocity.normalized * 10f);
 
-                                if (Physics.SphereCast(castStart, 1f, velocity.normalized, out RaycastHit hit, 5000f))
+                                if (Physics.SphereCast(castStart, 1f, velocity.normalized, out RaycastHit hit, requiredSensorRange))
                                 {
                                     if (hit.transform.root != APData.PlayerRB.transform.root)
                                     {
@@ -521,26 +524,32 @@ namespace AutopilotMod
                                         float turnRadius = (speed * speed) / gAccel;
                                         float projectedAltLoss = turnRadius * (1f - Mathf.Cos(diveAngle * Mathf.Deg2Rad));
 
-                                        // B. Vertical Space Available
+                                        // B. Vertical Space Available (AGL)
                                         float altitudeAgl = APData.PlayerRB.position.y - hit.point.y;
 
-                                        // C. Safety Buffer
+                                        // C. Descent Rate (Vertical Speed)
                                         float descentRate = Mathf.Abs(velocity.y);
-                                        float safetyBufferMeters = (descentRate * Plugin.GCAS_AutoBuffer.Value) + 20f; // +20m hard floor
 
-                                        // D. Trigger
-                                        if (altitudeAgl < (projectedAltLoss + safetyBufferMeters))
+                                        // D. Safety Buffers
+                                        // Trigger Buffer: How many meters we fall while the controls physically move
+                                        float triggerBuffer = (descentRate * Plugin.GCAS_AutoBuffer.Value) + 20f;
+                                        
+                                        // Warning Buffer: How many meters we fall during the warning time
+                                        float warningBuffer = descentRate * Plugin.GCAS_WarnBuffer.Value;
+
+                                        float triggerAlt = projectedAltLoss + triggerBuffer;
+                                        
+                                        if (altitudeAgl < triggerAlt)
                                         {
                                             APData.Enabled = true;
                                             APData.GCASActive = true;
                                             APData.TargetRoll = 0f;
                                             APData.TargetAlt = APData.CurrentAlt + 2000f; 
                                             ResetIntegrators();
-                                            
                                             if (Plugin.EnableActionLogs.Value) 
                                                 Plugin.Logger.LogWarning($"GCAS TRIGGER! AGL:{altitudeAgl:F0}m Loss:{projectedAltLoss:F0}m");
                                         }
-                                        else if (altitudeAgl < (projectedAltLoss + safetyBufferMeters + (speed * Plugin.GCAS_WarnBuffer.Value)))
+                                        else if (altitudeAgl < (triggerAlt + warningBuffer))
                                         {
                                             APData.GCASWarning = true;
                                         }
@@ -900,7 +909,7 @@ namespace AutopilotMod
                         aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } else if (APData.GCASWarning) {
                         aText.text = "PULL UP";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.red);
+                        aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } else {
                         aText.text = $"A: {APData.TargetAlt:F0} {APData.CurrentMaxClimbRate:F0} {APData.TargetRoll:F0}";
                         aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
@@ -908,7 +917,7 @@ namespace AutopilotMod
                 } else {
                     if (APData.GCASWarning) {
                         aText.text = "PULL UP";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.red);
+                        aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } else { aText.text = ""; }
                 }
                 
