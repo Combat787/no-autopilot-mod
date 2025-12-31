@@ -923,33 +923,29 @@ namespace AutopilotMod
                     rText.color = ModUtils.GetColor(Plugin.ColorInfo.Value, Color.cyan);
                 }
 
-                if (APData.Enabled) {
-                    string apStatus = $"A: {APData.TargetAlt:F0} {APData.CurrentMaxClimbRate:F0} {APData.TargetRoll:F0}";
-                } else {
-                    if (APData.GCASActive) 
-                    {
-                        aText.text = "AUTO-GCAS";
-                        aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
-                    } 
-                    else if (APData.GCASWarning) 
-                    {
-                        aText.text = "PULL UP";
-                        aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
-                    } 
-                    else if (APData.Enabled) 
-                    {
-                        aText.text = $"A: {APData.TargetAlt:F0} | V: {APData.CurrentMaxClimbRate:F0} | R: {APData.TargetRoll:F0}";
-                        aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
-                    } 
-                    else if (!APData.GCASEnabled) 
-                    {
-                        aText.text = "GCAS OFF";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
-                    } 
-                    else 
-                    {
-                        aText.text = "";
-                    }
+                if (APData.GCASActive) 
+                {
+                    aText.text = "AUTO-GCAS";
+                    aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
+                } 
+                else if (APData.GCASWarning) 
+                {
+                    aText.text = "PULL UP";
+                    aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
+                } 
+                else if (APData.Enabled) 
+                {
+                    aText.text = $"A: {APData.TargetAlt:F0} {APData.CurrentMaxClimbRate:F0} {APData.TargetRoll:F0}";
+                    aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
+                } 
+                else if (!APData.GCASEnabled) 
+                {
+                    aText.text = "GCAS OFF";
+                    aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
+                } 
+                else 
+                {
+                    aText.text = "";
                 }
                 
                 if (APData.AutoJammerActive) {
