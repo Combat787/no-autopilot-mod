@@ -3,6 +3,8 @@ Libs/
 bin/
 obj/
 
+.vscode/
+
 *.user
 *.cfg
 
