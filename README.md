@@ -105,7 +105,12 @@ The [BepInEx Configuration Manager](https://github.com/BepInEx/BepInEx.Configura
 
 ## Building from source
 
-1. clone the repo
+prerequisites
+- dotnet
+- game files
+
+steps
+1. clone the repo, cd no-autopilot-mod
 2. create /Libs folder next to source code
-3. copy dependencies into /Libs folder
+3. copy dependencies into /Libs folder from game files. the list is in the `.csproj`.
 4. `dotnet build -c Release`
