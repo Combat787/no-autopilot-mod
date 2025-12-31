@@ -102,3 +102,10 @@ The [BepInEx Configuration Manager](https://github.com/BepInEx/BepInEx.Configura
 3. Download  `noautopilotmod.zip` and extract the `noautopilotmod` folder.
 4. Place the `noautopilotmod` folder into your `Nuclear Option/BepInEx/plugins/` folder.
 6. Run the game once to generate the config file.
+
+## Building from source
+
+1. clone the repo
+2. create /Libs folder next to source code
+3. copy dependencies into /Libs folder
+4. `dotnet build -c Release`
