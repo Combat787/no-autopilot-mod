@@ -556,18 +556,14 @@ namespace AutopilotMod
                             // 3. STATE MACHINE
                             if (APData.GCASActive)
                             {
-                                // DISENGAGE LOGIC:
-                                // As soon as we have a positive climb rate, we are effectively "safe" relative to the terrain directly ahead.
-                                // This allows Terrain Following (Pull up -> Climb -> Release -> Push Down).
-                                if (velocity.y > 0f)
+                                if (!dangerImminent)
                                 {
                                     APData.GCASActive = false;
                                     APData.Enabled = false;
-                                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS RECOVERED (Climbing)");
+                                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS RECOVERED (Path Clear)");
                                 }
                                 else
                                 {
-                                    // We are still falling or level. Maintain Max G Pull.
                                     APData.GCASWarning = true;
                                     APData.TargetRoll = 0f;
                                     APData.TargetAlt = APData.CurrentAlt + 2000f; 
@@ -575,7 +571,6 @@ namespace AutopilotMod
                             }
                             else 
                             {
-                                // ENGAGE LOGIC
                                 if (dangerImminent)
                                 {
                                     APData.Enabled = true;
