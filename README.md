@@ -37,7 +37,7 @@ In approximate likelihood of implementation order descending.
 
 ## Autopilot
 
-Autopilot controls roll and pitch. Does not work on helicopters unless they fly like planes (tarantula probably works when propellers are horizontal. ibis not tested).
+Autopilot controls roll and pitch. Any aircraft works if they fly like a plane (tarantula probably works when propellers are horizontal. ibis not tested, chicane somehow works).
 
 Ascent/descent rate limits and target altitude can be configured with keyboard while flying.
 
