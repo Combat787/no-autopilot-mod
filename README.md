@@ -1,6 +1,6 @@
 # NO Autopilot Mod
 
-Currently the autopilot is rather basic. There are some additional features, such as Medusa auto jam (currently just an auto fire mode, it won't select targets automatically or anything, it will only save your finger).
+Currently the autopilot is rather basic. There are some additional features, such as EW auto jam (currently just an auto fire mode, it won't select targets automatically or anything, it will only save your finger).
 
 ## features and not features
 
@@ -17,7 +17,7 @@ In order of implementation, earliest first
 - vertical speed limiter
 - HUD autopilot display
 - fuel time and range display
-- Medusa auto jam
+- EW auto jam
 - FBW manual override
 - Auto-GCAS
 
@@ -47,7 +47,7 @@ Large stick inputs will disengage the autopilot.
 
 The mod can also override fly by wire, allowing you to perform better cobra manoeuvres or snap your wings.
 
-Displays current settings on the HUD. The format is `AP: [Target Altitude] [Max Climb Rate] [Target Bank Angle]`. For example, autopilot set to 3m altitude, at 40m/s climb rate, at 0 degrees bank angle will show up as `AP: 3 40 0` on the HUD.
+Displays current settings on the HUD. The format is `A: [Target Altitude] [Max Climb Rate] [Target Bank Angle]`. For example, autopilot set to 3m altitude, at 40m/s climb rate, at 0 degrees bank angle will show up as `A: 3 40 0` on the HUD.
 
 Has humanlike options that will help reduce its effectiveness. You can probably configure it so that it cannot sea skim at 2m ASL so easily.
 
@@ -69,9 +69,9 @@ Also displays fuel time remaining and range. Unfortunately for non-metric system
 
 Oh, forgot to mention that all the other units are also displayed in metric system, this cannot be changed.
 
-## Usage example with Medusa
+## Usage example with EW plane
 
-After take-off, throttle kept at 100% for climb. Autopilot set to 10000m target altitude, 50 m/s climb rate and 30 degrees bank angle. Autopilot displays `AP: 10000 50 30`.
+After take-off, throttle kept at 100% for climb. Autopilot set to 10000m target altitude, 50 m/s climb rate and 30 degrees bank angle. Autopilot displays `A: 10000 50 30`.
 
 After the plane levels out at around 10000m, throttle reduced to 30%. Plane continues to fly in circles.
 
