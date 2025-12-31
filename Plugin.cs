@@ -77,8 +77,8 @@ namespace AutopilotMod
             ColorCrit = Config.Bind("Visuals - Colors", "5. Color Critical", "#FF0000", "Red");
             ColorInfo = Config.Bind("Visuals - Colors", "6. Color Info", "#00FFFF", "Cyan");
 
-            FuelOffsetY = Config.Bind("Visuals - Layout", "1. Stack Start Y", -20f, "Vertical position");
-            FuelLineSpacing = Config.Bind("Visuals - Layout", "2. Line Spacing", 20f, "Vertical gap");
+            FuelOffsetY = Config.Bind("Visuals - Layout", "1. Stack Start Y", -15f, "Vertical position");
+            FuelLineSpacing = Config.Bind("Visuals - Layout", "2. Line Spacing", 12f, "Vertical gap");
             
             ShowExtraInfo = Config.Bind("Visuals", "Show Fuel/AP Info", true, "Show extra info on Fuel Gauge");
 
@@ -145,7 +145,7 @@ namespace AutopilotMod
             Conf_VS_ILimit = Config.Bind("Tuning - 2. VertSpeed", "4. VS I Limit", 300.0f, "Max Trim (Deg)");
 
             // Loop 3 (Angle)
-            Conf_Angle_P = Config.Bind("Tuning - 3. Angle", "1. Angle P", 0.03f, "Angle Error -> Stick");
+            Conf_Angle_P = Config.Bind("Tuning - 3. Angle", "1. Angle P", 0.01f, "Angle Error -> Stick");
             Conf_Angle_I = Config.Bind("Tuning - 3. Angle", "2. Angle I", 0.0f, "Holds Angle");
             Conf_Angle_D = Config.Bind("Tuning - 3. Angle", "3. Angle D", 0.0f, "Dampens Rotation");
             Conf_Angle_ILimit = Config.Bind("Tuning - 3. Angle", "4. Angle I Limit", 100.0f, "Max Integral (Stick)");
@@ -212,8 +212,11 @@ namespace AutopilotMod
     // --- PATCHES ---
 
     [HarmonyPatch(typeof(FlightHud), "SetHUDInfo")]
-    internal class HudSpyPatch
+    internal class HudPatch
     {
+        // Helper to track vehicle changes
+        private static GameObject lastVehicleObj;
+
         private static void Postfix(object playerVehicle, float altitude)
         {
             try {
@@ -221,13 +224,30 @@ namespace AutopilotMod
                 if (playerVehicle != null)
                 {
                     Component v = (Component)playerVehicle;
+
+                    // Detect if we switched planes or respawned
+                    if (v.gameObject != lastVehicleObj)
+                    {
+                        lastVehicleObj = v.gameObject;
+                        
+                        // Force systems OFF so the new plane doesn't crash immediately
+                        APData.Enabled = false;
+                        APData.AutoJammerActive = false;
+                        APData.FBWDisabled = false;
+
+                        if (Plugin.EnableActionLogs.Value)
+                            Plugin.Logger.LogInfo("New Vehicle Detected - Systems Reset");
+                    }
+
                     APData.CurrentRoll = v.transform.eulerAngles.z;
                     if (APData.CurrentRoll > 180f) APData.CurrentRoll -= 360f;
+
+                    // Update the Rigidbody reference
                     var rb = v.GetComponent<Rigidbody>();
                     if (APData.PlayerRB != rb) APData.PlayerRB = rb;
                 }
             } catch (Exception ex) {
-                Plugin.Logger.LogError($"[HudSpyPatch] Error: {ex}");
+                Plugin.Logger.LogError($"[HudPatch] Error: {ex}");
             }
         }
     }
@@ -378,7 +398,7 @@ namespace AutopilotMod
                 {
                     APData.TargetAlt = APData.CurrentAlt;
                     APData.TargetRoll = 0f;
-                    ResetIntegrators(); // Fix 2: Reset integrals on AP Enable
+                    ResetIntegrators();
                 }
                 wasEnabled = APData.Enabled;
             }
@@ -477,36 +497,24 @@ namespace AutopilotMod
                     else
                     {
                         if (APData.PlayerRB != null) APData.PlayerRB.isKinematic = false;
-
-                        bool targetChanged = false;
                         
-                        if (Input.GetKey(Plugin.UpKey.Value)) { APData.TargetAlt += Plugin.AltStep.Value; targetChanged = true; }
-                        if (Input.GetKey(Plugin.DownKey.Value)) { APData.TargetAlt -= Plugin.AltStep.Value; targetChanged = true; }
-                        if (Input.GetKey(Plugin.BigUpKey.Value)) { APData.TargetAlt += Plugin.BigAltStep.Value; targetChanged = true; }
+                        if (Input.GetKey(Plugin.UpKey.Value)) { APData.TargetAlt += Plugin.AltStep.Value; }
+                        if (Input.GetKey(Plugin.DownKey.Value)) { APData.TargetAlt -= Plugin.AltStep.Value; }
+                        if (Input.GetKey(Plugin.BigUpKey.Value)) { APData.TargetAlt += Plugin.BigAltStep.Value; }
                         if (Input.GetKey(Plugin.BigDownKey.Value)) {
                             float n = APData.TargetAlt - Plugin.BigAltStep.Value;
                             APData.TargetAlt = Mathf.Max(n, Plugin.MinAltitude.Value);
-                            targetChanged = true;
                         }
 
                         if (Input.GetKey(Plugin.ClimbRateUpKey.Value)) APData.CurrentMaxClimbRate += Plugin.ClimbRateStep.Value;
                         if (Input.GetKey(Plugin.ClimbRateDownKey.Value)) APData.CurrentMaxClimbRate = Mathf.Max(0.5f, APData.CurrentMaxClimbRate - Plugin.ClimbRateStep.Value);
                         
-                        if (Input.GetKey(Plugin.BankLevelKey.Value)) { APData.TargetRoll = 0f; targetChanged = true; }
+                        if (Input.GetKey(Plugin.BankLevelKey.Value)) { APData.TargetRoll = 0f; }
                         else if (Input.GetKey(Plugin.BankLeftKey.Value)) { 
-                            // Fix 3: Normalize Roll Target 
-                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll + Plugin.BankStep.Value + 180f, 360f) - 180f; 
-                            targetChanged = true; 
+                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll + Plugin.BankStep.Value + 180f, 360f) - 180f;
                         }
                         else if (Input.GetKey(Plugin.BankRightKey.Value)) { 
-                            // Fix 3: Normalize Roll Target
-                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll - Plugin.BankStep.Value + 180f, 360f) - 180f; 
-                            targetChanged = true; 
-                        }
-
-                        if (targetChanged) 
-                        { 
-                            ResetIntegrators(); // Fix 2: Reset integrators on target change
+                            APData.TargetRoll = Mathf.Repeat(APData.TargetRoll - Plugin.BankStep.Value + 180f, 360f) - 180f;
                         }
 
                         float currentVS = (APData.PlayerRB != null) ? APData.PlayerRB.velocity.y : 0f;
@@ -514,7 +522,6 @@ namespace AutopilotMod
                         float pitchOut = 0f;
                         float rollOut = 0f;
                         
-                        // Fix 2: Use Time.deltaTime for stability
                         float dt = Time.deltaTime; 
 
                         Vector3 fwd = APData.PlayerRB.transform.forward;
@@ -627,48 +634,87 @@ namespace AutopilotMod
         }
     }
 
-    [HarmonyPatch(typeof(FuelGauge), "Refresh")]
-    internal class VisualsStackPatch
+    [HarmonyPatch(typeof(FlightHud), "Update")]
+    internal class HUDVisualsPatch
     {
+        private static GameObject timerObj, rangeObj, apObj, ajObj, fbwObj;
         private static float lastFuelMass = 0f;
         private static float fuelFlowEma = 0f;
         private static float lastUpdateTime = 0f;
-        private static GameObject timerObj, rangeObj, apObj, ajObj, fbwObj;
-        private static Aircraft lastAircraft;
+        
+        // Track the gauge to detect aircraft/HUD switches
+        private static FuelGauge lastFuelGauge; 
 
-        private static void Postfix(FuelGauge __instance)
+        private static void Postfix(FlightHud __instance)
         {
             if (!Plugin.ShowExtraInfo.Value) return;
 
             try {
-                Aircraft aircraft = Traverse.Create(__instance).Field("aircraft").GetValue<Aircraft>();
+                Aircraft aircraft = Traverse.Create(__instance).Field("playerVehicle").GetValue<Aircraft>();
                 if (aircraft == null) return;
-                Text fuelLabel = Traverse.Create(__instance).Field("fuelLabel").GetValue<Text>();
-                if (fuelLabel == null) return;
 
-                float baseY = Plugin.FuelOffsetY.Value;
-                float gap = Plugin.FuelLineSpacing.Value;
-                
-                if (lastAircraft != aircraft) {
-                    // Reset and cleanup previous UI elements if aircraft changes
+                // 1. Find the FuelGauge, even if it is currently disabled (Landing Mode)
+                FuelGauge fg = __instance.GetComponentInChildren<FuelGauge>(true);
+                if (fg == null) return;
+
+                // 2. Reset if we switched aircraft/gauges
+                if (lastFuelGauge != fg) {
                     if (timerObj) UnityEngine.Object.Destroy(timerObj);
                     if (rangeObj) UnityEngine.Object.Destroy(rangeObj);
                     if (apObj) UnityEngine.Object.Destroy(apObj);
                     if (ajObj) UnityEngine.Object.Destroy(ajObj);
                     if (fbwObj) UnityEngine.Object.Destroy(fbwObj);
-                    
                     timerObj = null; rangeObj = null; apObj = null; ajObj = null; fbwObj = null;
-                    lastAircraft = aircraft; 
-                    fuelFlowEma = 0f; 
+                    
+                    lastFuelGauge = fg;
+                    fuelFlowEma = 0f;
                     lastUpdateTime = 0f;
                 }
 
-                if (!timerObj) { timerObj = UnityEngine.Object.Instantiate(fuelLabel.gameObject, __instance.transform); timerObj.GetComponent<RectTransform>().anchoredPosition += new Vector2(0f, baseY); }
-                if (!rangeObj) { rangeObj = UnityEngine.Object.Instantiate(fuelLabel.gameObject, __instance.transform); rangeObj.GetComponent<RectTransform>().anchoredPosition += new Vector2(0f, baseY - gap); }
-                if (!apObj) { apObj = UnityEngine.Object.Instantiate(fuelLabel.gameObject, __instance.transform); apObj.GetComponent<RectTransform>().anchoredPosition += new Vector2(0f, baseY - (gap * 2f)); }
-                if (!ajObj) { ajObj = UnityEngine.Object.Instantiate(fuelLabel.gameObject, __instance.transform); ajObj.GetComponent<RectTransform>().anchoredPosition += new Vector2(0f, baseY - (gap * 3f)); }
-                if (!fbwObj) { fbwObj = UnityEngine.Object.Instantiate(fuelLabel.gameObject, __instance.transform); fbwObj.GetComponent<RectTransform>().anchoredPosition += new Vector2(0f, baseY - (gap * 4f)); }
+                // 3. Create Objects if missing
+                if (!timerObj) {
+                    Text template = Traverse.Create(fg).Field("fuelLabel").GetValue<Text>();
+                    if (template == null) return;
 
+                    // Helper to spawn text attached to the HUD root, not the gauge
+                    GameObject Spawn(string name) {
+                        GameObject go = UnityEngine.Object.Instantiate(template.gameObject, __instance.transform);
+                        go.name = name;
+                        go.SetActive(true); // Force visible even if template is hidden
+                        return go;
+                    }
+
+                    timerObj = Spawn("AP_Timer");
+                    rangeObj = Spawn("AP_Range");
+                    apObj = Spawn("AP_Status");
+                    ajObj = Spawn("AP_Jammer");
+                    fbwObj = Spawn("AP_FBW");
+                }
+
+                // 4. Update Positions (Snap to the fuel gauge position)
+                // We do this every frame in case the UI moves or sways
+                Text refLabel = Traverse.Create(fg).Field("fuelLabel").GetValue<Text>();
+                if (refLabel != null) {
+                    Vector3 basePos = refLabel.transform.position;
+                    float startY = Plugin.FuelOffsetY.Value;
+                    float gap = Plugin.FuelLineSpacing.Value;
+                    
+                    // Small helper to position a line
+                    void Place(GameObject obj, int index) {
+                        if (!obj) return;
+                        // Use transform.up for rotation safety, though usually just Y
+                        obj.transform.position = basePos + (obj.transform.up * (startY - (gap * index)));
+                        if (!obj.activeSelf) obj.SetActive(true); // Ensure it stays visible
+                    }
+
+                    Place(timerObj, 0);
+                    Place(rangeObj, 1);
+                    Place(apObj, 2);
+                    Place(ajObj, 3);
+                    Place(fbwObj, 4);
+                }
+
+                // 5. Calculate Fuel Logic (Same as before)
                 float currentFuel = Traverse.Create(aircraft).Field("fuelCapacity").GetValue<float>() * aircraft.GetFuelLevel();
                 float time = Time.time;
                 if (lastUpdateTime != 0f) {
@@ -682,6 +728,7 @@ namespace AutopilotMod
                     }
                 } else { lastUpdateTime = time; lastFuelMass = currentFuel; }
 
+                // 6. Update Text Content
                 Text tText = timerObj.GetComponent<Text>();
                 Text rText = rangeObj.GetComponent<Text>();
                 Text aText = apObj.GetComponent<Text>();
@@ -689,20 +736,16 @@ namespace AutopilotMod
                 Text fText = fbwObj.GetComponent<Text>();
 
                 if (currentFuel <= 1f) {
-                    // Tank Empty
                     tText.text = "00:00"; tText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     rText.text = "--- km"; rText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                 } else {
-                    // If flow is 0, we pretend it is 0.0001 so it keeps calculating
                     float calcFlow = Mathf.Max(fuelFlowEma, 0.0001f);
-
                     float secs = currentFuel / calcFlow;
                     int h = Mathf.FloorToInt(secs / 3600f);
                     int m = Mathf.FloorToInt(secs % 3600f / 60f);
-
                     if (h > 99) { h = 99; m = 59; }
-                    tText.text = $"{h:D2}:{m:D2}";
                     
+                    tText.text = $"{h:D2}:{m:D2}";
                     float mins = secs / 60f;
                     if (mins < Plugin.FuelCritMinutes.Value) tText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     else if (mins < Plugin.FuelWarnMinutes.Value) tText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
@@ -710,9 +753,7 @@ namespace AutopilotMod
 
                     float spd = (aircraft.rb != null) ? aircraft.rb.velocity.magnitude : 0f;
                     float rangeKm = secs * spd / 1000f;
-
-                    if (rangeKm > 9999f) rangeKm = 9999f;
-
+                    if (rangeKm > 99999f) rangeKm = 9999f;
                     rText.text = $"{rangeKm:F0} km";
                     rText.color = ModUtils.GetColor(Plugin.ColorInfo.Value, Color.cyan);
                 }
@@ -724,16 +765,19 @@ namespace AutopilotMod
                     aText.text = "A: OFF";
                     aText.color = ModUtils.GetColor(Plugin.ColorAPOff.Value, new Color(1f, 1f, 1f, 0.5f));
                 }
+                
                 if (APData.AutoJammerActive) {
                     jText.text = "AJ: ON";
                     jText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
                 } else { jText.text = ""; }
+                
                 if (APData.FBWDisabled) {
                     fText.text = "FBW: OFF";
                     fText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                 } else { fText.text = ""; }
+
             } catch (Exception ex) {
-                Plugin.Logger.LogError($"[VisualsStackPatch] Error: {ex}");
+                Plugin.Logger.LogError($"[HUDVisualsPatch] Error: {ex}");
             }
         }
     }
