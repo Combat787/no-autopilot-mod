@@ -487,62 +487,56 @@ namespace AutopilotMod
                         if (speed > 15f)
                         {
                             Vector3 velocity = APData.PlayerRB.velocity;
-                            float descentRate = (velocity.y < 0) ? Mathf.Abs(velocity.y) : 0f;
-                            float currentAltAgl = APData.CurrentAlt; // Altitude MSL
-
-                            // 1. SETUP PHYSICS
-                            // Turn Radius = V^2 / a
                             float gAccel = Plugin.GCAS_MaxG.Value * 9.81f; 
-                            float turnRadius = speed * speed / gAccel;
+                            float turnRadius = (speed * speed) / gAccel;
                             
-                            // User selected clearance & Lag
-                            float c = Plugin.GCAS_Clearance.Value;;
-                            float lagDist = speed * Plugin.GCAS_AutoBuffer.Value;
+                            float bufferDist = (speed * Plugin.GCAS_AutoBuffer.Value) + 50f;
+                            float warnDist = speed * Plugin.GCAS_WarnBuffer.Value;
+
+                            float impactDist = -1f;
+                            float turnAngle = 0f;
+
+                            float scanRange = (turnRadius * 1.6f) + warnDist + 1000f;
+                            Vector3 castStart = APData.PlayerRB.position + (velocity.normalized * 10f);
+
+                            if (Physics.SphereCast(castStart, 1f, velocity.normalized, out RaycastHit hit, scanRange))
+                            {
+                                if (hit.transform.root != APData.PlayerRB.transform.root)
+                                {
+                                    impactDist = hit.distance;
+                                    
+                                    turnAngle = Mathf.Abs(Vector3.Angle(velocity, hit.normal) - 90f);
+                                }
+                            }
+                            
+                            if (impactDist < 0f && velocity.y < -1f)
+                            {
+                                float diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
+                                float distToWater = APData.CurrentAlt / Mathf.Sin(diveAngle * Mathf.Deg2Rad);
+                                
+                                if (distToWater < scanRange)
+                                {
+                                    impactDist = distToWater;
+                                    turnAngle = diveAngle;
+                                }
+                            }
 
                             bool dangerImminent = false;
                             bool warningZone = false;
 
-                            float sensorRange = Mathf.Min(5000f, (speed * Plugin.GCAS_WarnBuffer.Value) + 1000f);
-                            Vector3 castStart = APData.PlayerRB.position + (velocity.normalized * 10f);
-                            
-                            if (Physics.SphereCast(castStart, 1f, velocity.normalized, out RaycastHit hit, sensorRange) && hit.transform.root != APData.PlayerRB.transform.root)
+                            if (impactDist > 0f)
                             {
-                                // Distance to the obstacle
-                                float r = hit.distance; 
-                                
-                                // Calculate the "Ski Jump" curve height at this distance
-                                // h = (Distance - Lag)^2 / (2 * Radius)
-                                float curveHeight = (r < lagDist) ? 0 : (Mathf.Pow(r - lagDist, 2) / (2 * turnRadius));
-                                
-                                // Current Height above the specific terrain point we hit
-                                float heightAboveTerrain = APData.PlayerRB.position.y - hit.point.y;
+                                float requiredDistance = turnRadius * (turnAngle * Mathf.Deg2Rad);
 
-                                // Condition: Are we below the safety curve?
-                                // Safe if: Height > (Clearance + Curve)
-                                if (heightAboveTerrain < (c + curveHeight)) 
+                                if (impactDist < (requiredDistance + bufferDist))
                                 {
                                     dangerImminent = true;
                                     if (Plugin.EnableActionLogs.Value && !APData.GCASActive)
-                                        Plugin.Logger.LogWarning($"TFR WALL: H:{heightAboveTerrain:F0} < Req:{curveHeight:F0}");
+                                        Plugin.Logger.LogWarning($"GCAS TRIG: Dist:{impactDist:F0} < Req:{requiredDistance + bufferDist:F0}");
                                 }
-                                else if (heightAboveTerrain < (c + curveHeight + 100f)) 
+                                else if (impactDist < (requiredDistance + bufferDist + warnDist))
                                 {
                                     warningZone = true;
-                                }
-                            }
-
-                            else if (descentRate > 1f) 
-                            {
-                                float diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
-                                float geometricAltLoss = turnRadius * (1f - Mathf.Cos(diveAngle * Mathf.Deg2Rad));
-                                
-                                float verticalBuffer = (descentRate * Plugin.GCAS_AutoBuffer.Value) + c;
-
-                                if (currentAltAgl < (geometricAltLoss + verticalBuffer))
-                                {
-                                    dangerImminent = true;
-                                    if (Plugin.EnableActionLogs.Value && !APData.GCASActive)
-                                        Plugin.Logger.LogWarning($"TFR WATER: Alt:{currentAltAgl:F0} < Loss:{geometricAltLoss:F0}");
                                 }
                             }
 
