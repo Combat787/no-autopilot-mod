@@ -537,7 +537,11 @@ namespace AutopilotMod
 
                             if (APData.GCASActive)
                             {
-                                if (!terrainDetected || !dangerImminent)
+                                // Active Recovery Logic
+                                bool skyClear = !terrainDetected;
+                                bool climbingAway = velocity.y > 0f;
+
+                                if (skyClear || climbingAway)
                                 {
                                     APData.GCASActive = false;
                                     APData.Enabled = false;
@@ -547,23 +551,22 @@ namespace AutopilotMod
                                 {
                                     APData.GCASWarning = true;
                                     APData.TargetRoll = 0f;
-                                    APData.TargetAlt = APData.CurrentAlt + 2000f;
+                                    APData.TargetAlt = APData.CurrentAlt + 2000f; 
                                 }
                             }
                             else 
                             {
-                                if (dangerImminent && descentRate > 1f)
+                                if (dangerImminent)
                                 {
                                     APData.Enabled = true;
                                     APData.GCASActive = true;
                                     APData.TargetRoll = 0f;
                                     APData.TargetAlt = APData.CurrentAlt + 2000f;
-                                    ResetIntegrators();
                                     
                                     if (Plugin.EnableActionLogs.Value) 
                                         Plugin.Logger.LogWarning($"GCAS TRIGGER! AGL:{altitudeAgl:F0}m Loss:{projectedAltLoss:F0}m");
                                 }
-                                else if (warningZone && descentRate > 1f)
+                                else if (warningZone)
                                 {
                                     APData.GCASWarning = true;
                                 }
