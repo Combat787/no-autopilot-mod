@@ -926,19 +926,28 @@ namespace AutopilotMod
                 if (APData.Enabled) {
                     string apStatus = $"A: {APData.TargetAlt:F0} {APData.CurrentMaxClimbRate:F0} {APData.TargetRoll:F0}";
                 } else {
-                    if (!APData.GCASEnabled) {
-                        aText.text = "GCAS OFF";
-                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
-                    }
-                    else if (APData.GCASActive) {
+                    if (APData.GCASActive) 
+                    {
                         aText.text = "AUTO-GCAS";
                         aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } 
-                    else if (APData.GCASWarning) {
+                    else if (APData.GCASWarning) 
+                    {
                         aText.text = "PULL UP";
                         aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                     } 
-                    else {
+                    else if (APData.Enabled) 
+                    {
+                        aText.text = $"A: {APData.TargetAlt:F0} | V: {APData.CurrentMaxClimbRate:F0} | R: {APData.TargetRoll:F0}";
+                        aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
+                    } 
+                    else if (!APData.GCASEnabled) 
+                    {
+                        aText.text = "GCAS OFF";
+                        aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
+                    } 
+                    else 
+                    {
                         aText.text = "";
                     }
                 }
