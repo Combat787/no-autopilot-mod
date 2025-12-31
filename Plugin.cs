@@ -753,7 +753,7 @@ namespace AutopilotMod
 
                     float spd = (aircraft.rb != null) ? aircraft.rb.velocity.magnitude : 0f;
                     float rangeKm = secs * spd / 1000f;
-                    if (rangeKm > 99999f) rangeKm = 9999f;
+                    if (rangeKm > 9999f) rangeKm = 9999f;
                     rText.text = $"{rangeKm:F0} km";
                     rText.color = ModUtils.GetColor(Plugin.ColorInfo.Value, Color.cyan);
                 }
