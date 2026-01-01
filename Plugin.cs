@@ -1,6 +1,6 @@
 using System;
-using System.Reflection;
 using System.Collections;
+using System.Reflection;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -10,7 +10,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.1")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.2")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
@@ -77,8 +77,7 @@ namespace AutopilotMod
         internal static FieldInfo f_pitch, f_roll; 
         
         // Aircraft Specifics
-        internal static FieldInfo f_controlsFilter, f_fuelCapacity, f_pilots, f_gearState, f_weaponManager; 
-        //f_radarAlt;
+        internal static FieldInfo f_controlsFilter, f_fuelCapacity, f_pilots, f_gearState, f_weaponManager, f_radarAlt;
         
         // Weapon/Jammer Specifics
         internal static FieldInfo f_powerSupply, f_charge, f_maxCharge;
@@ -224,8 +223,7 @@ namespace AutopilotMod
                 f_pilots = typeof(Aircraft).GetField("pilots", allFlags);
                 f_gearState = typeof(Aircraft).GetField("gearState", allFlags);
                 f_weaponManager = typeof(Aircraft).GetField("weaponManager", allFlags);
-                
-                // f_radarAlt = typeof(Aircraft).GetField("radarAlt", allFlags); 
+                f_radarAlt = typeof(Aircraft).GetField("radarAlt", allFlags); 
 
                 Type psType = typeof(Aircraft).Assembly.GetType("PowerSupply");
                 if (psType != null) {
@@ -463,17 +461,11 @@ namespace AutopilotMod
                 APData.GCASWarning = false;
 
                 float currentG = 1f;
-                float radarAlt = APData.CurrentAlt; // Default to MSL if fetch fails
                 Aircraft acRef = null;
 
                 if (APData.PlayerRB != null) {
                     acRef = APData.PlayerRB.GetComponent<Aircraft>();
                     if (acRef != null) {
-                        // it is broken
-                        // if (Plugin.f_radarAlt != null) {
-                        //     radarAlt = (float)Plugin.f_radarAlt.GetValue(acRef);
-                        // }
-
                         // Safe G-Force
                         if (Plugin.f_pilots != null) {
                             IList pilots = (IList)Plugin.f_pilots.GetValue(acRef);
@@ -485,7 +477,7 @@ namespace AutopilotMod
                     }
                 }
 
-                // --- GCAS LOGIC (Original) ---
+                // --- GCAS LOGIC (Reverted to 4.9.0 Logic) ---
                 if (Plugin.EnableGCAS.Value && APData.GCASEnabled && APData.PlayerRB != null)
                 {
                     bool gearDown = false;
@@ -509,10 +501,14 @@ namespace AutopilotMod
                         if (speed > 15f && (!APData.Enabled || APData.GCASActive))
                         {
                             Vector3 velocity = APData.PlayerRB.velocity;
-                            
+                            float descentRate = (velocity.y < 0) ? Mathf.Abs(velocity.y) : 0f;
+
                             float gAccel = Plugin.GCAS_MaxG.Value * 9.81f; 
                             float turnRadius = (speed * speed) / gAccel;
-                            float reactionDist = speed * Plugin.GCAS_AutoBuffer.Value;
+                            
+                            // Reverted to 4.9.0 buffer logic
+                            float reactionTime = Plugin.GCAS_AutoBuffer.Value;
+                            float reactionDist = speed * reactionTime;
                             float warnDist = speed * Plugin.GCAS_WarnBuffer.Value;
 
                             bool dangerImminent = false;
@@ -532,7 +528,7 @@ namespace AutopilotMod
                                     if (hit.distance < (reqArc + reactionDist + 20f))
                                     {
                                         dangerImminent = true;
-                                        if (hit.normal.y < 0.7f) isWallThreat = true; 
+                                        if (hit.normal.y < 0.7f) isWallThreat = true;
                                     }
                                     else if (hit.distance < (reqArc + reactionDist + warnDist))
                                     {
@@ -541,25 +537,26 @@ namespace AutopilotMod
                                 }
                             }
 
-                            if (velocity.y < -1f) 
+                            // Reverted to 4.9.0 Floor Logic (Uses MSL APData.CurrentAlt, not RadarAlt)
+                            if (descentRate > 0.1f) 
                             {
                                 float diveAngle = Vector3.Angle(velocity, Vector3.ProjectOnPlane(velocity, Vector3.up));
                                 float pullUpLoss = turnRadius * (1f - Mathf.Cos(diveAngle * Mathf.Deg2Rad));
+                                float vertBuffer = descentRate * reactionTime;
                                 
-                                if (radarAlt < (pullUpLoss + reactionDist)) dangerImminent = true;
-                                else if (radarAlt < (pullUpLoss + reactionDist + (Mathf.Abs(velocity.y) * Plugin.GCAS_WarnBuffer.Value))) warningZone = true;
+                                if (APData.CurrentAlt < (pullUpLoss + vertBuffer)) dangerImminent = true;
+                                else if (APData.CurrentAlt < (pullUpLoss + vertBuffer + (descentRate * Plugin.GCAS_WarnBuffer.Value))) warningZone = true;
                             }
 
                             if (APData.GCASActive)
                             {
                                 bool safeToRelease = false;
 
+                                // Reverted to 4.9.0 Release Logic
                                 if (!dangerImminent)
                                 {
-                                    if (isWallThreat || APData.CurrentAlt > 100f) 
-                                        safeToRelease = true;
-                                    else if (velocity.y >= 0f) 
-                                        safeToRelease = true;
+                                    if (isWallThreat || APData.CurrentAlt > 100f) safeToRelease = true;
+                                    else if (velocity.y >= 0f) safeToRelease = true;
                                 }
 
                                 if (safeToRelease)
@@ -767,7 +764,7 @@ namespace AutopilotMod
                             logTimer++;
                             if (logTimer > Plugin.LogRefreshRate.Value) {
                                 logTimer = 0;
-                                Plugin.Logger.LogInfo($"[AP] Alt:{APData.CurrentAlt:F0} Rad:{radarAlt:F0} G:{currentG:F1}");
+                                // Plugin.Logger.LogInfo($"[AP] Alt:{APData.CurrentAlt:F0} Rad:{radarAlt:F0} G:{currentG:F1}");
                             }
                         }
                     }
@@ -819,7 +816,9 @@ namespace AutopilotMod
 
                 if (!timerObj) {
                     GameObject Spawn(string name) {
-                        GameObject go = UnityEngine.Object.Instantiate(refLabel.gameObject, refLabel.transform.parent); 
+                        // FIX: Parent to __instance (the HUD root) instead of the label, 
+                        // to match 4.9.0 behavior and avoid LayoutGroup overrides.
+                        GameObject go = UnityEngine.Object.Instantiate(refLabel.gameObject, __instance.transform); 
                         go.name = name;
                         go.SetActive(true); 
                         return go;
@@ -831,14 +830,15 @@ namespace AutopilotMod
                     fbwObj = Spawn("AP_FBW");
                 }
 
-                // Fix: Use LocalPosition to prevent jitter
+                // Match 4.9.0 Positioning logic (World Position relative to refLabel)
                 float startY = Plugin.FuelOffsetY.Value;
                 float gap = Plugin.FuelLineSpacing.Value;
-                Vector3 baseLocalPos = refLabel.transform.localPosition;
+                Vector3 basePos = refLabel.transform.position;
 
                 void Place(GameObject obj, int index) {
                     if (!obj) return;
-                    obj.transform.localPosition = baseLocalPos + new Vector3(0, startY - (gap * index), 0);
+                    // Use World Position derived from the label's Up vector
+                    obj.transform.position = basePos + (obj.transform.up * (startY - (gap * index)));
                     if (!obj.activeSelf) obj.SetActive(true); 
                 }
                 Place(timerObj, 0);
