@@ -9,7 +9,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.0")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.1")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
@@ -254,10 +254,18 @@ namespace AutopilotMod
                     {
                         lastVehicleObj = v.gameObject;
                         
-                        // Force systems OFF so the new plane doesn't crash immediately
                         APData.Enabled = false;
+                        APData.WasAPOn = false;
+                        APData.GCASEnabled = true;
                         APData.AutoJammerActive = false;
                         APData.FBWDisabled = false;
+                        APData.GCASActive = false; 
+                        APData.GCASWarning = false;
+                        APData.TargetAlt = 0f;
+                        APData.TargetRoll = 0f;
+                        APData.CurrentAlt = 0f;
+                        APData.CurrentRoll = 0f;
+                        APData.CurrentMaxClimbRate = -1f; 
 
                         if (Plugin.EnableActionLogs.Value)
                             Plugin.Logger.LogInfo("New Vehicle Detected - Systems Reset");
