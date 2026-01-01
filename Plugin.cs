@@ -243,6 +243,12 @@ namespace AutopilotMod
                 if (pilotType != null) {
                     m_GetAccel = pilotType.GetMethod("GetAccel");
                 }
+
+                Type wmType = typeof(Aircraft).Assembly.GetType("WeaponManager");
+                if (wmType != null) {
+                    m_Fire = wmType.GetMethod("Fire", BindingFlags.Public | BindingFlags.Instance);
+                }
+
             } catch (Exception ex) {
                 Logger.LogError("Failed to cache reflection fields! Mod might break. " + ex);
             }
@@ -590,7 +596,12 @@ namespace AutopilotMod
                             if (isJammerHoldingTrigger && Plugin.f_weaponManager != null) {
                                 object wm = Plugin.f_weaponManager.GetValue(acRef);
                                 if (wm != null) {
-                                    Traverse.Create(wm).Method("Fire").GetValue();
+                                    if (Plugin.m_Fire != null) {
+                                        Plugin.m_Fire.Invoke(wm, null);
+                                    } else {
+                                        // Fallback if caching failed
+                                        Traverse.Create(wm).Method("Fire").GetValue();
+                                    }
                                 }
                             }
                         }
@@ -675,7 +686,11 @@ namespace AutopilotMod
                             float targetG = Plugin.GCAS_MaxG.Value;
                             float gError = targetG - currentG;
                             gcasIntegral = Mathf.Clamp(gcasIntegral + (gError * dt * Plugin.GCAS_I.Value), -Plugin.GCAS_ILimit.Value, Plugin.GCAS_ILimit.Value);
-                            float stick = (gError * Plugin.GCAS_P.Value) + gcasIntegral;
+
+                            float gD = (gError - lastGError) / dt;
+                            lastGError = gError;
+
+                            float stick = (gError * Plugin.GCAS_P.Value) + gcasIntegral + (gD * Plugin.GCAS_D.Value);
                             pitchOut = Mathf.Clamp(stick, -1f, 1f);
                         }
                         else
