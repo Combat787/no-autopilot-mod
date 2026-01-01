@@ -77,7 +77,8 @@ namespace AutopilotMod
         internal static FieldInfo f_pitch, f_roll; 
         
         // Aircraft Specifics
-        internal static FieldInfo f_controlsFilter, f_fuelCapacity, f_pilots, f_gearState, f_weaponManager, f_radarAlt;
+        internal static FieldInfo f_controlsFilter, f_fuelCapacity, f_pilots, f_gearState, f_weaponManager; 
+        //f_radarAlt;
         
         // Weapon/Jammer Specifics
         internal static FieldInfo f_powerSupply, f_charge, f_maxCharge;
