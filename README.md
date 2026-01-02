@@ -87,6 +87,7 @@ Weapon is switched to jammer, and auto jammer enabled. when target is selected, 
 | **Max Climb Rate +/-** | `PageUp` / `PageDown` | Limit vertical speed |
 | **Bank Left/Right** | `[` and `]` | Adjust roll angle |
 | **Reset Bank** | `'` (Quote) | Level the wings, sets roll to 0 |
+| **Toggle GCAS** | `\` (Backslash) | added just in case |
 
 Large altitude adjustment key has minimum limit to reduce crashes when sea skimming if the key is accidentally pressed.
 
