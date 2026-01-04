@@ -2,6 +2,8 @@
 
 Currently the autopilot is rather basic. There are some additional features, such as EW auto jam (currently just an auto fire mode, it won't select targets automatically or anything, it will only save your finger).
 
+![autopilot-demo](https://github.com/user-attachments/assets/9fdd050a-548e-4e51-b1cd-5e5f69b1e119)
+
 ## features and not features
 
 Some of the not features may eventually be implemented.
