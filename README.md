@@ -37,6 +37,10 @@ In approximate likelihood of implementation order descending.
 
 ## Autopilot
 
+really bad demo video (my laptop is not good enough to record or my recording settings are bad. maybe both. will record again with my desktop later)
+
+https://github.com/user-attachments/assets/3000ab2d-5bcd-46d8-b539-b1b465850720
+
 Autopilot controls roll and pitch. Any aircraft works if it flies like a plane (helicopters somehow work, but probably require small ascent/descent rate limits).
 
 Ascent/descent rate limits and target altitude can be configured with keyboard while flying.
@@ -68,6 +72,14 @@ Also has humanlike options that can reduce its reaction time and randomise it.
 Also displays fuel time remaining and range. Unfortunately for non-metric system users, range is displayed in km. fuel time remaining is displayed HH: MM.
 
 Oh, forgot to mention that all the other units are also displayed in metric system, this cannot be changed.
+
+## Auto-GCAS
+
+also really bad demo video (the plane also crashed at the end, probably it didn't see the mountain or something?)
+
+https://github.com/user-attachments/assets/1785beb8-1faa-4c5f-9fdb-ae67181053e2
+
+i will make some better videos later.
 
 ## Usage example with EW plane
 
