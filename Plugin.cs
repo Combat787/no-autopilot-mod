@@ -10,7 +10,7 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.2")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.9.3")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
@@ -171,7 +171,7 @@ namespace AutopilotMod
             RollILimit = Config.Bind("Tuning - Roll", "5. Roll I Limit", 50.0f, "Limit");
 
             // Auto GCAS
-            EnableGCAS = Config.Bind("Auto GCAS", "1. Enable GCAS", true, "Auto pull up logic");
+            EnableGCAS = Config.Bind("Auto GCAS", "1. Enable GCAS on start", true, "GCAS off at start if disabled");
             ToggleGCASKey = Config.Bind("Auto GCAS", "2. Toggle GCAS Key", KeyCode.Backslash, "Turn Auto-GCAS on/off");
             GCAS_MaxG = Config.Bind("Auto GCAS", "3. Max G-Pull", 5.0f, "Assumed G-Force capability for calculation");
             GCAS_WarnBuffer = Config.Bind("Auto GCAS", "4. Warning Buffer", 20.0f, "Seconds warning before auto-pull");
@@ -256,7 +256,7 @@ namespace AutopilotMod
     {
         public static bool Enabled = false;
         public static bool WasAPOn = false;
-        public static bool GCASEnabled = true;
+        public static bool GCASEnabled = Plugin.EnableGCAS.Value;
         public static bool AutoJammerActive = false;
         public static bool FBWDisabled = false;
         public static bool GCASActive = false; 
@@ -300,10 +300,10 @@ namespace AutopilotMod
                         lastVehicleObj = v.gameObject;
                         APData.Enabled = false;
                         APData.WasAPOn = false;
-                        APData.GCASEnabled = true;
+                        APData.GCASEnabled = Plugin.EnableGCAS.Value;
                         APData.AutoJammerActive = false;
                         APData.FBWDisabled = false;
-                        APData.GCASActive = false; 
+                        APData.GCASActive = false;
                         APData.GCASWarning = false;
                         APData.TargetAlt = altitude;
                         APData.TargetRoll = 0f;
@@ -478,8 +478,8 @@ namespace AutopilotMod
                     }
                 }
 
-                // --- GCAS LOGIC (Reverted to 4.9.0 Logic) ---
-                if (Plugin.EnableGCAS.Value && APData.GCASEnabled && APData.PlayerRB != null)
+                // gcas
+                if (APData.GCASEnabled && APData.PlayerRB != null)
                 {
                     bool gearDown = false;
                     // Safe Gear Check
