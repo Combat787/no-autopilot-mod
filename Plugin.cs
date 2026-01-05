@@ -343,7 +343,7 @@ namespace AutopilotMod
             DistanceUnit unit = Plugin.UnitDist.Value;
 
             if (unit == DistanceUnit.NauticalMiles)
-                return $"{meters * 0.000539957f:F0}" + (showLabel ? " nm" : "");
+                return $"{meters * 0.000539957f:F0}" + (showLabel ? " nmi" : "");
             
             if (unit == DistanceUnit.Miles)
                 return $"{meters * 0.000621371f:F0}" + (showLabel ? " mi" : "");
