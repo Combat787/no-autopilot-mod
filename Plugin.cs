@@ -10,47 +10,35 @@ using UnityEngine.UI;
 
 namespace AutopilotMod
 {
-    public enum AltitudeUnit
-    {
-        Meters,
-        Feet
-    }
-
-    public enum DistanceUnit
-    {
-        Kilometers,
-        NauticalMiles,
-        Miles
-    }
-
-    public enum VertSpeedUnit
-    {
-        MetersPerSec,
-        FeetPerSec,
-        FeetPerMin,
-        Knots
-    }
-
-    public enum SpeedUnit
-    {
-        KilometersPerHour,
-        MilesPerHour,
-        Knots,
-        MetersPerSec
-    }
-
-    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.10.0")]
+    [BepInPlugin("com.qwerty1423.noautopilotmod", "NOAutopilotMod", "4.11.0")]
     public class Plugin : BaseUnityPlugin
     {
         internal new static ManualLogSource Logger;
 
-        // --- CONFIG ENTRIES ---
+        // ap menu?
+        public static ConfigEntry<KeyCode> MenuKey;
+        private Rect _windowRect = new Rect(50, 50, 250, 0);
+        private bool _showMenu = false;
+        
+        private string _bufAlt = "10000";
+        private string _bufClimb = "40";
+        private string _bufRoll = "0";
+        
+        private GUIStyle _styleWindow;
+        private GUIStyle _styleLabel;
+        private GUIStyle _styleButton;
+        private bool _stylesInitialized = false;
+
+        public static ConfigEntry<float> UI_PosX, UI_PosY;
+        public static ConfigEntry<float> UI_Opacity;
+        private bool _firstWindowInit = true;
 
         // Visuals
         public static ConfigEntry<string> ColorAPOn, ColorAPOff, ColorGood, ColorWarn, ColorCrit, ColorInfo;
         public static ConfigEntry<float> FuelOffsetY, FuelLineSpacing, FuelSmoothing, FuelUpdateInterval;
         public static ConfigEntry<int> FuelWarnMinutes, FuelCritMinutes;
         public static ConfigEntry<bool> ShowExtraInfo;
+        public static ConfigEntry<bool> ShowAPOverlay;
         public static ConfigEntry<bool> ShowGCASOff;
         public static ConfigEntry<AltitudeUnit> UnitAlt;
         public static ConfigEntry<DistanceUnit> UnitDist;
@@ -63,8 +51,6 @@ namespace AutopilotMod
         public static ConfigEntry<bool> AngleShowUnit;
 
         // Settings
-        public static ConfigEntry<bool> EnableActionLogs, EnableDebugDump, ShowLogs, LogPIDData;
-        public static ConfigEntry<int> LogRefreshRate;
         public static ConfigEntry<float> StickDeadzone;
 
         // Auto Jammer
@@ -77,7 +63,7 @@ namespace AutopilotMod
 
         // Controls
         public static ConfigEntry<KeyCode> ToggleKey, ToggleFBWKey, UpKey, DownKey, BigUpKey, BigDownKey;
-        public static ConfigEntry<KeyCode> ClimbRateUpKey, ClimbRateDownKey, BankLeftKey, BankRightKey, BankLevelKey, DumpKey;
+        public static ConfigEntry<KeyCode> ClimbRateUpKey, ClimbRateDownKey, BankLeftKey, BankRightKey, BankLevelKey;
 
         // Flight Values
         public static ConfigEntry<float> AltStep, BigAltStep, ClimbRateStep, BankStep, MinAltitude;
@@ -129,10 +115,9 @@ namespace AutopilotMod
         {
             Plugin.Logger = base.Logger;
             
-            // --- BIND CONFIGS ---
             // Visuals
             ColorAPOn = Config.Bind("Visuals - Colors", "1. Color AP On", "#00FF00", "Green");
-            ColorAPOff = Config.Bind("Visuals - Colors", "2. Color AP Off", "#FFFFFF80", "Transparent White");
+            ColorAPOff = Config.Bind("Visuals - Colors", "2. Color AP Off", "#ffffffff", "White");
             ColorGood = Config.Bind("Visuals - Colors", "3. Color Good", "#00FF00", "Green");
             ColorWarn = Config.Bind("Visuals - Colors", "4. Color Warning", "#FFFF00", "Yellow");
             ColorCrit = Config.Bind("Visuals - Colors", "5. Color Critical", "#FF0000", "Red");
@@ -140,6 +125,7 @@ namespace AutopilotMod
             FuelOffsetY = Config.Bind("Visuals - Layout", "1. Stack Start Y", -20f, "Vertical position");
             FuelLineSpacing = Config.Bind("Visuals - Layout", "2. Line Spacing", 20f, "Vertical gap");
             ShowExtraInfo = Config.Bind("Visuals", "Show Fuel/AP Info", true, "Show extra info on Fuel Gauge");
+            ShowAPOverlay = Config.Bind("Visuals", "Show AP Overlay", true, "Draw AP status text on the HUD. Turn off if you want, there's a window now.");
             ShowGCASOff = Config.Bind("Visuals", "Show GCAS OFF", true, "Show the GCAS OFF message");
             UnitAlt = Config.Bind("Visuals - Units", "1. Altitude Units", AltitudeUnit.Meters, "Unit for Altitude.");
             UnitDist = Config.Bind("Visuals - Units", "2. Distance Units", DistanceUnit.Kilometers, "Unit for Range.");
@@ -151,20 +137,21 @@ namespace AutopilotMod
             SpeedShowUnit = Config.Bind("Visuals - Units", "8. Show unit for speed", false, "(example) on: 10km/h, off: 10 (unused right now, no autothrottle yet)");
             AngleShowUnit = Config.Bind("Visuals - Units", "9. Show unit for angle", false, "on: 10°, off: 10");
 
+            UI_PosX = Config.Bind("Visuals - UI", "1. Window Position X", -1f, "-1 = Auto Bottom Right, otherwise pixel value");
+            UI_PosY = Config.Bind("Visuals - UI", "2. Window Position Y", -1f, "-1 = Auto Bottom Right, otherwise pixel value");
+            UI_Opacity = Config.Bind("Visuals - UI", "3. Window Opacity", 0.50f, 
+            new ConfigDescription("Transparency of the Autopilot window.", 
+            new AcceptableValueRange<float>(0f, 1f)));
+
             FuelSmoothing = Config.Bind("Calculations", "1. Fuel Flow Smoothing", 0.1f, "Alpha value");
             FuelUpdateInterval = Config.Bind("Calculations", "2. Fuel Update Interval", 1.0f, "Seconds");
             FuelWarnMinutes = Config.Bind("Calculations", "3. Fuel Warning Time", 15, "Minutes");
             FuelCritMinutes = Config.Bind("Calculations", "4. Fuel Critical Time", 5, "Minutes");
 
             // Settings
-            EnableActionLogs = Config.Bind("Settings", "1. Enable Action Logs", false, "Log On/Off events");
-            EnableDebugDump = Config.Bind("Settings", "2. Enable Debug Dump", false, "Allow dumping aircraft variables");
-            ShowLogs = Config.Bind("Settings", "3. Show Debug Logs", false, "Spam console");
-            LogRefreshRate = Config.Bind("Settings", "4. Debug Log Rate", 60, "Frames");
-            LogPIDData = Config.Bind("Settings", "5. Log PID CSV", false, "CSV output");
-            StickDeadzone = Config.Bind("Settings", "6. Stick Deadzone", 0.5f, "Threshold");
-            InvertRoll = Config.Bind("Settings", "7. Invert Roll", false, "Flip Roll");
-            InvertPitch = Config.Bind("Settings", "8. Invert Pitch", true, "Flip Pitch");
+            StickDeadzone = Config.Bind("Settings", "1. Stick Deadzone", 0.5f, "Threshold");
+            InvertRoll = Config.Bind("Settings", "2. Invert Roll", false, "Flip Roll");
+            InvertPitch = Config.Bind("Settings", "3. Invert Pitch", true, "Flip Pitch");
 
             // Auto Jammer
             EnableAutoJammer = Config.Bind("Auto Jammer", "1. Enable Auto Jammer", true, "Allow the feature");
@@ -179,16 +166,15 @@ namespace AutopilotMod
             // Controls
             ToggleKey = Config.Bind("Controls", "01. Toggle AP Key", KeyCode.Equals, "AP On/Off");
             ToggleFBWKey = Config.Bind("Controls", "02. Toggle FBW Key", KeyCode.Delete, "Toggle Stability Assist");
-            UpKey = Config.Bind("Controls", "03. Altitude Up (Small)", KeyCode.UpArrow, "No Limits");
-            DownKey = Config.Bind("Controls", "04. Altitude Down (Small)", KeyCode.DownArrow, "No Limits");
-            BigUpKey = Config.Bind("Controls", "05. Altitude Up (Big)", KeyCode.LeftArrow, "Jump Up");
-            BigDownKey = Config.Bind("Controls", "06. Altitude Down (Big)", KeyCode.RightArrow, "Jump Down");
+            UpKey = Config.Bind("Controls", "03. Altitude Up (Small)", KeyCode.UpArrow, "small increase");
+            DownKey = Config.Bind("Controls", "04. Altitude Down (Small)", KeyCode.DownArrow, "small decrease");
+            BigUpKey = Config.Bind("Controls", "05. Altitude Up (Big)", KeyCode.LeftArrow, "large increase");
+            BigDownKey = Config.Bind("Controls", "06. Altitude Down (Big)", KeyCode.RightArrow, "large decrease");
             ClimbRateUpKey = Config.Bind("Controls", "07. Climb Rate Increase", KeyCode.PageUp, "Increase Max VS");
             ClimbRateDownKey = Config.Bind("Controls", "08. Climb Rate Decrease", KeyCode.PageDown, "Decrease Max VS");
             BankLeftKey = Config.Bind("Controls", "09. Bank Left", KeyCode.LeftBracket, "Roll Left");
             BankRightKey = Config.Bind("Controls", "10. Bank Right", KeyCode.RightBracket, "Roll Right");
             BankLevelKey = Config.Bind("Controls", "11. Bank Level (Reset)", KeyCode.Quote, "Reset Roll to 0");
-            DumpKey = Config.Bind("Controls", "12. Debug Dump Key", KeyCode.Backslash, "Print Aircraft vars to console");
 
             // Flight Values
             AltStep = Config.Bind("Controls", "13. Altitude Increment (Small)", 0.1f, "Meters per tick");
@@ -196,6 +182,7 @@ namespace AutopilotMod
             ClimbRateStep = Config.Bind("Controls", "15. Climb Rate Step", 0.5f, "m/s per tick");
             BankStep = Config.Bind("Controls", "16. Bank Step", 0.5f, "Degrees per tick");
             MinAltitude = Config.Bind("Controls", "17. Minimum Target Altitude", 20f, "Safety floor");
+            MenuKey = Config.Bind("Controls", "18. Menu Key", KeyCode.F8, "Open the Autopilot Menu");
 
             // Tuning
             DefaultMaxClimbRate = Config.Bind("Tuning - 0. Limits", "1. Default Max Climb Rate", 40f, "Startup value");
@@ -263,8 +250,9 @@ namespace AutopilotMod
                 
                 if (f_controlInputs != null) {
                     Type inputType = f_controlInputs.FieldType;
-                    f_pitch = inputType.GetField("pitch");
-                    f_roll = inputType.GetField("roll");
+                    BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                    f_pitch = inputType.GetField("pitch", flags);
+                    f_roll = inputType.GetField("roll", flags);
                 }
 
                 BindingFlags allFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
@@ -299,6 +287,249 @@ namespace AutopilotMod
 
             new Harmony("com.qwerty1423.noautopilotmod").PatchAll();
         }
+
+        private void InitStyles()
+        {
+            _styleWindow = new GUIStyle(GUI.skin.window);
+            _styleLabel = new GUIStyle(GUI.skin.label);
+            
+            Texture2D bgTex = new Texture2D(1, 1);
+            float alpha = Mathf.Clamp01(UI_Opacity.Value);
+            bgTex.SetPixel(0, 0, new Color(0.15f, 0.15f, 0.15f, alpha)); 
+            bgTex.Apply();
+
+            _styleWindow.normal.background = bgTex;
+            _styleWindow.onNormal.background = bgTex;
+            _styleWindow.hover.background = bgTex;
+            _styleWindow.active.background = bgTex;
+            _styleWindow.focused.background = bgTex;
+            
+            _styleWindow.normal.textColor = Color.white;
+
+            _styleButton = new GUIStyle(GUI.skin.button);
+            _styleButton.fixedHeight = 25;
+
+            _stylesInitialized = true;
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyDown(MenuKey.Value))
+            {
+                _showMenu = !_showMenu;
+                if (_showMenu)
+                {
+                    SyncMenuValues();
+                }
+            }
+            if (_showMenu && APData.Enabled)
+            {
+                bool isAdjusting = 
+                    Input.GetKey(UpKey.Value) || Input.GetKey(DownKey.Value) || 
+                    Input.GetKey(BigUpKey.Value) || Input.GetKey(BigDownKey.Value) ||
+                    Input.GetKey(ClimbRateUpKey.Value) || Input.GetKey(ClimbRateDownKey.Value) ||
+                    Input.GetKey(BankLeftKey.Value) || Input.GetKey(BankRightKey.Value) || Input.GetKey(BankLevelKey.Value);
+
+                if (isAdjusting)
+                {
+                    SyncMenuValues();
+                }
+            }
+        }
+
+        private void SyncMenuValues()
+        {
+            _bufAlt = APData.TargetAlt.ToString("F0");
+            
+            float currentVS = APData.CurrentMaxClimbRate > 0 
+                ? APData.CurrentMaxClimbRate 
+                : DefaultMaxClimbRate.Value;
+            _bufClimb = currentVS.ToString("F0");
+            
+            _bufRoll = APData.TargetRoll.ToString("F0");
+        }
+
+        private void OnGUI()
+        {
+            if (!_showMenu) return;
+            if (!_stylesInitialized) InitStyles();
+
+            if (_firstWindowInit)
+            {
+                float w = _windowRect.width;
+                float h = _windowRect.height;
+                float x = UI_PosX.Value;
+                float y = UI_PosY.Value;
+
+                if (x < 0) x = Screen.width - w - 20;
+                if (y < 0) y = Screen.height - h - 50;
+
+                _windowRect.x = x;
+                _windowRect.y = y;
+                _firstWindowInit = false;
+            }
+
+            _windowRect = GUI.Window(999, _windowRect, DrawAPWindow, "AUTOPILOT CONTROLS", _styleWindow);
+        }
+
+        private void DrawAPWindow(int windowID)
+        {
+            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                if (_windowRect.x != UI_PosX.Value || _windowRect.y != UI_PosY.Value)
+                {
+                    UI_PosX.Value = _windowRect.x;
+                    UI_PosY.Value = _windowRect.y;
+                }
+            }
+
+            GUILayout.BeginVertical();
+
+            string cOn = ColorAPOn.Value.StartsWith("#") ? ColorAPOn.Value : "#" + ColorAPOn.Value;
+            string cOff = ColorAPOff.Value.StartsWith("#") ? ColorAPOff.Value : "#" + ColorAPOff.Value;
+
+            string statusColor = APData.Enabled ? cOn : cOff;
+            string statusText = APData.Enabled ? "ENGAGED" : "DISENGAGED";
+            
+            GUILayout.Label($"STATUS: <color={statusColor}>{statusText}</color>", _styleLabel);
+            
+            float currentVS = (APData.PlayerRB != null) ? APData.PlayerRB.velocity.y : 0f;
+            
+            string sAlt = ModUtils.FormatAltitude(APData.CurrentAlt, true);
+            string sRoll = ModUtils.FormatAngle(APData.CurrentRoll, true);
+            string sVS = ModUtils.FormatVertSpeed(currentVS, true);
+
+            GUILayout.Label($"Alt: {sAlt}", _styleLabel);
+            GUILayout.Label($"VS: {sVS} | Roll: {sRoll}", _styleLabel);
+
+            GUILayout.Space(10);
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Target Alt:", _styleLabel, GUILayout.Width(80));
+            _bufAlt = GUILayout.TextField(_bufAlt);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Max V.Spd:", _styleLabel, GUILayout.Width(80));
+            _bufClimb = GUILayout.TextField(_bufClimb);
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label("Bank Angle:", _styleLabel, GUILayout.Width(80));
+            _bufRoll = GUILayout.TextField(_bufRoll);
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(10);
+
+            if (GUILayout.Button("SET VALUES", _styleButton))
+            {
+                if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
+                if (float.TryParse(_bufClimb, out float c)) APData.CurrentMaxClimbRate = Mathf.Max(0.5f, c);
+                if (float.TryParse(_bufRoll, out float r)) APData.TargetRoll = r;
+            }
+
+            GUILayout.Space(5);
+
+            GUI.backgroundColor = APData.Enabled ? Color.green : Color.red;
+            if (GUILayout.Button(APData.Enabled ? "DISENGAGE" : "ENGAGE", _styleButton))
+            {
+                APData.Enabled = !APData.Enabled;
+                if (APData.Enabled)
+                {
+                    if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
+                    if (float.TryParse(_bufClimb, out float c)) APData.CurrentMaxClimbRate = c;
+                    if (float.TryParse(_bufRoll, out float r)) APData.TargetRoll = r;
+                }
+            }
+            GUI.backgroundColor = Color.white;
+
+            GUILayout.Space(15);
+            GUILayout.Label("SYSTEMS", _styleLabel);
+
+            if (GUILayout.Button($"Auto Jammer: {(APData.AutoJammerActive ? "ON" : "OFF")}", _styleButton))
+            {
+                APData.AutoJammerActive = !APData.AutoJammerActive;
+            }
+
+            if (GUILayout.Button($"Auto GCAS: {(APData.GCASEnabled ? "ON" : "OFF")}", _styleButton))
+            {
+                APData.GCASEnabled = !APData.GCASEnabled;
+                if (!APData.GCASEnabled) APData.GCASActive = false;
+            }
+
+            if (GUILayout.Button($"FBW Stability: {(APData.FBWDisabled ? "OFF" : "ON")}", _styleButton))
+            {
+                ToggleFBW_Action();
+            }
+
+            if (GUILayout.Button("Reset Bank (Level)", _styleButton))
+            {
+                APData.TargetRoll = 0f;
+                _bufRoll = "0";
+            }
+
+            GUILayout.EndVertical();
+        }
+
+        public static void ToggleFBW_Action()
+        {
+            if (APData.LocalAircraft == null) return;
+
+            try {
+                if (f_controlsFilter == null) return;
+
+                object cf = f_controlsFilter.GetValue(APData.LocalAircraft);
+                
+                if (cf != null && !cf.GetType().Name.Contains("Helo")) {
+                    if (m_GetFBW == null) m_GetFBW = cf.GetType().GetMethod("GetFlyByWireParameters");
+                    if (m_SetFBW == null) m_SetFBW = cf.GetType().GetMethod("SetFlyByWireParameters");
+                    
+                    if (m_GetFBW != null && m_SetFBW != null) {
+                        object result = m_GetFBW.Invoke(cf, null);
+                        
+                        bool isEnabled = (bool)result.GetType().GetField("Item1").GetValue(result);
+                        float[] values = (float[])result.GetType().GetField("Item2").GetValue(result);
+                        
+                        m_SetFBW.Invoke(cf, new object[] { !isEnabled, values });
+                        
+                        APData.FBWDisabled = isEnabled;
+                    }
+                }
+            } catch (Exception ex) {
+                Logger.LogError("Error toggling FBW: " + ex);
+            }
+        }
+    }
+
+    public enum AltitudeUnit
+    {
+        Meters,
+        Feet
+    }
+
+    public enum DistanceUnit
+    {
+        Kilometers,
+        NauticalMiles,
+        Miles
+    }
+
+    public enum VertSpeedUnit
+    {
+        MetersPerSec,
+        FeetPerSec,
+        FeetPerMin,
+        Knots
+    }
+
+    public enum SpeedUnit
+    {
+        KilometersPerHour,
+        MilesPerHour,
+        Knots,
+        MetersPerSec
     }
 
     // --- SHARED DATA ---
@@ -317,6 +548,7 @@ namespace AutopilotMod
         public static float CurrentRoll = 0f;
         public static float CurrentMaxClimbRate = -1f; 
         public static Rigidbody PlayerRB;
+        public static Aircraft LocalAircraft;
     }
 
     // --- HELPERS ---
@@ -415,10 +647,8 @@ namespace AutopilotMod
                         APData.GCASWarning = false;
                         APData.TargetAlt = altitude;
                         APData.TargetRoll = 0f;
-                        APData.CurrentMaxClimbRate = -1f; 
-
-                        if (Plugin.EnableActionLogs.Value)
-                            Plugin.Logger.LogInfo("New Vehicle Detected - Systems Reset");
+                        APData.CurrentMaxClimbRate = -1f;
+                        APData.LocalAircraft = v.GetComponent<Aircraft>();
                     }
 
                     APData.CurrentRoll = v.transform.eulerAngles.z;
@@ -442,58 +672,25 @@ namespace AutopilotMod
                 if (Input.GetKeyDown(Plugin.ToggleKey.Value))
                 {
                     APData.Enabled = !APData.Enabled;
-                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("AP: " + APData.Enabled);
                 }
 
                 if (Plugin.EnableAutoJammer.Value && Input.GetKeyDown(Plugin.AutoJammerKey.Value))
                 {
                     APData.AutoJammerActive = !APData.AutoJammerActive;
-                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("Jammer: " + APData.AutoJammerActive);
                 }
 
                 if (Input.GetKeyDown(Plugin.ToggleFBWKey.Value))
                 {
-                    Aircraft ac = (Aircraft)Plugin.f_playerVehicle.GetValue(__instance);
-                    if (ac != null) {
-                        object cf = Plugin.f_controlsFilter.GetValue(ac);
-                        if (cf != null && !cf.GetType().Name.Contains("Helo")) {
-                            if (Plugin.m_GetFBW == null) Plugin.m_GetFBW = cf.GetType().GetMethod("GetFlyByWireParameters");
-                            if (Plugin.m_SetFBW == null) Plugin.m_SetFBW = cf.GetType().GetMethod("SetFlyByWireParameters");
-                            
-                            if (Plugin.m_GetFBW != null && Plugin.m_SetFBW != null) {
-                                object result = Plugin.m_GetFBW.Invoke(cf, null);
-                                bool isEnabled = (bool)result.GetType().GetField("Item1").GetValue(result);
-                                float[] values = (float[])result.GetType().GetField("Item2").GetValue(result);
-                                
-                                Plugin.m_SetFBW.Invoke(cf, [!isEnabled, values]);
-                                APData.FBWDisabled = !!isEnabled;
-                            }
-                        }
-                    }
+                    Plugin.ToggleFBW_Action();
                 }
                 
                 if (Input.GetKeyDown(Plugin.ToggleGCASKey.Value))
                 {
                     APData.GCASEnabled = !APData.GCASEnabled;
                     if (!APData.GCASEnabled) { APData.GCASActive = false; APData.GCASWarning = false; }
-                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS: " + APData.GCASEnabled);
                 }
             } catch (Exception ex) {
                 Plugin.Logger.LogError($"[InputHandlerPatch] Error: {ex}");
-            }
-        }
-    }
-
-    [HarmonyPatch(typeof(FlightHud), "Update")]
-    internal class DebugDumpPatch
-    {
-        private static void Postfix(FlightHud __instance)
-        {
-            if (!Plugin.EnableDebugDump.Value) return;
-            if (Input.GetKeyDown(Plugin.DumpKey.Value))
-            {
-                 Aircraft ac = (Aircraft)Plugin.f_playerVehicle.GetValue(__instance);
-                 if (ac != null) Plugin.Logger.LogInfo($"Dump: {ac.name}, Mass: {ac.rb.mass}");
             }
         }
     }
@@ -512,9 +709,9 @@ namespace AutopilotMod
         private static float lastAltError = 0f;
         private static float lastVSError = 0f;
         private static float lastGError = 0f;
+        private static float lastAltMeasurement = 0f;
                 
         // Timers & Logic
-        private static int logTimer = 0;
         private static bool wasEnabled = false;
         private static float pitchSleepUntil = 0f;
         private static float rollSleepUntil = 0f;
@@ -537,6 +734,8 @@ namespace AutopilotMod
         {
             if (APData.CurrentMaxClimbRate < 0f) APData.CurrentMaxClimbRate = Plugin.DefaultMaxClimbRate.Value;
 
+            if (Plugin.f_controlInputs == null || Plugin.f_pitch == null || Plugin.f_roll == null) return;
+
             if (APData.Enabled != wasEnabled)
             {
                 if (APData.Enabled)
@@ -555,17 +754,16 @@ namespace AutopilotMod
             {
                 // Access input via cached field
                 object inputObj = Plugin.f_controlInputs.GetValue(__instance);
+
+                if (inputObj == null) return;
                 
                 float stickPitch = 0f;
                 float stickRoll = 0f;
 
-                if (Plugin.f_pitch != null && Plugin.f_roll != null) {
-                    stickPitch = (float)Plugin.f_pitch.GetValue(inputObj);
-                    stickRoll = (float)Plugin.f_roll.GetValue(inputObj);
-                } else {
-                    stickPitch = Traverse.Create(inputObj).Field("pitch").GetValue<float>();
-                    stickRoll = Traverse.Create(inputObj).Field("roll").GetValue<float>();
-                }
+                if (Plugin.f_pitch == null && Plugin.f_roll == null) return;
+
+                stickPitch = (float)Plugin.f_pitch.GetValue(inputObj);
+                stickRoll = (float)Plugin.f_roll.GetValue(inputObj);
 
                 APData.GCASWarning = false;
 
@@ -573,7 +771,7 @@ namespace AutopilotMod
                 Aircraft acRef = null;
 
                 if (APData.PlayerRB != null) {
-                    acRef = APData.PlayerRB.GetComponent<Aircraft>();
+                    acRef = APData.LocalAircraft;
                     if (acRef != null) {
                         // Safe G-Force
                         if (Plugin.f_pilots != null) {
@@ -601,7 +799,6 @@ namespace AutopilotMod
                         if (APData.GCASActive) {
                             APData.GCASActive = false;
                             APData.Enabled = false;
-                            if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS OVERRIDE (Pilot/Gear)");
                         }
                     }
                     else
@@ -672,7 +869,6 @@ namespace AutopilotMod
                                 {
                                     APData.GCASActive = false;
                                     APData.Enabled = false; 
-                                    if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogInfo("GCAS RECOVERED");
                                 }
                                 else
                                 {
@@ -685,7 +881,6 @@ namespace AutopilotMod
                                 APData.Enabled = true;
                                 APData.GCASActive = true;
                                 APData.TargetRoll = 0f;
-                                if (Plugin.EnableActionLogs.Value) Plugin.Logger.LogWarning("GCAS TRIGGER");
                             }
                             else if (warningZone)
                             {
@@ -757,7 +952,7 @@ namespace AutopilotMod
                             if (Input.GetKey(Plugin.BankRightKey.Value)) APData.TargetRoll = Mathf.Repeat(APData.TargetRoll - Plugin.BankStep.Value + 180f, 360f) - 180f;
                         }
 
-                        float dt = Time.deltaTime; 
+                        float dt = Mathf.Max(Time.deltaTime, 0.0001f);
                         float pitchOut = 0f;
                         float rollOut = 0f;
                         float noiseT = Time.time * Plugin.HumanizeSpeed.Value;
@@ -797,7 +992,6 @@ namespace AutopilotMod
                             float gError = targetG - currentG;
                             gcasIntegral = Mathf.Clamp(gcasIntegral + (gError * dt * Plugin.GCAS_I.Value), -Plugin.GCAS_ILimit.Value, Plugin.GCAS_ILimit.Value);
                             
-                            // Original Logic: D-Term + Last Inversion
                             float gD = (gError - lastGError) / dt;
                             lastGError = gError;
                             
@@ -813,7 +1007,9 @@ namespace AutopilotMod
                             } else {
                                 float altError = APData.TargetAlt - APData.CurrentAlt;
                                 altIntegral = Mathf.Clamp(altIntegral + (altError * dt * Plugin.Conf_Alt_I.Value), -Plugin.Conf_Alt_ILimit.Value, Plugin.Conf_Alt_ILimit.Value);
-                                float altD = (altError - lastAltError) / dt; lastAltError = altError;
+
+                                float altD = -(APData.CurrentAlt - lastAltMeasurement) / dt;
+                                lastAltMeasurement = APData.CurrentAlt;
                                 
                                 float targetVS = Mathf.Clamp((altError * Plugin.Conf_Alt_P.Value) + altIntegral + (altD * Plugin.Conf_Alt_D.Value), -APData.CurrentMaxClimbRate, APData.CurrentMaxClimbRate);
                                 float vsError = targetVS - APData.PlayerRB.velocity.y;
@@ -859,27 +1055,21 @@ namespace AutopilotMod
                         }
 
                         // Apply to inputs
+                        pitchOut = Mathf.Clamp(pitchOut, -1f, 1f);
+                        rollOut = Mathf.Clamp(rollOut, -1f, 1f);
+
+                        // Apply to inputs
                         if (Plugin.f_pitch != null && Plugin.f_roll != null) {
-                            Plugin.f_pitch.SetValue(inputObj, Mathf.Clamp(pitchOut, -1f, 1f));
-                            Plugin.f_roll.SetValue(inputObj, Mathf.Clamp(rollOut, -1f, 1f));
+                            Plugin.f_pitch.SetValue(inputObj, pitchOut);
+                            Plugin.f_roll.SetValue(inputObj, rollOut);
                         } else {
-                            Traverse.Create(inputObj).Field("pitch").SetValue(Mathf.Clamp(pitchOut, -1f, 1f));
-                            Traverse.Create(inputObj).Field("roll").SetValue(Mathf.Clamp(rollOut, -1f, 1f));
+                            Traverse.Create(inputObj).Field("pitch").SetValue(pitchOut);
+                            Traverse.Create(inputObj).Field("roll").SetValue(rollOut);
                         }
                         
                         stickPitch = pitchOut;
-
-                        if (Plugin.ShowLogs.Value) {
-                            logTimer++;
-                            if (logTimer > Plugin.LogRefreshRate.Value) {
-                                logTimer = 0;
-                                // Plugin.Logger.LogInfo($"[AP] Alt:{APData.CurrentAlt:F0} Rad:{radarAlt:F0} G:{currentG:F1}");
-                            }
-                        }
                     }
                 }
-                
-                if (Plugin.LogPIDData.Value) Console.WriteLine($"{Time.time:F2}\t{stickPitch:F4}\t{APData.CurrentAlt:F1}");
             }
             catch (Exception ex) { 
                 Plugin.Logger.LogError($"[ControlOverridePatch] Error: {ex}");
@@ -892,40 +1082,46 @@ namespace AutopilotMod
     internal class HUDVisualsPatch
     {
         private static GameObject timerObj, rangeObj, apObj, ajObj, fbwObj;
+        private static Text tText, rText, aText, jText, fText;
         private static float lastFuelMass = 0f;
         private static float fuelFlowEma = 0f;
         private static float lastUpdateTime = 0f;
-        private static FuelGauge lastFuelGauge; 
+
+        private static FuelGauge _cachedFuelGauge;
+        private static Text _cachedRefLabel;
+        private static GameObject _lastVehicleChecked;
 
         private static void Postfix(FlightHud __instance)
         {
             if (!Plugin.ShowExtraInfo.Value) return;
 
             try {
-                Aircraft aircraft = (Aircraft)Plugin.f_playerVehicle.GetValue(__instance);
-                if (aircraft == null) return;
+                GameObject currentVehicleObj = ((Component)Plugin.f_playerVehicle.GetValue(__instance))?.gameObject;
+                
+                if (currentVehicleObj == null) return;
 
-                FuelGauge fg = __instance.GetComponentInChildren<FuelGauge>(true);
-                if (fg == null) return;
-
-                if (lastFuelGauge != fg) {
+                if (_lastVehicleChecked != currentVehicleObj || _cachedFuelGauge == null)
+                {
+                    _lastVehicleChecked = currentVehicleObj;
+                    _cachedFuelGauge = __instance.GetComponentInChildren<FuelGauge>(true);
+                    
                     if (timerObj) UnityEngine.Object.Destroy(timerObj);
                     if (rangeObj) UnityEngine.Object.Destroy(rangeObj);
                     if (apObj) UnityEngine.Object.Destroy(apObj);
                     if (ajObj) UnityEngine.Object.Destroy(ajObj);
                     if (fbwObj) UnityEngine.Object.Destroy(fbwObj);
                     timerObj = null; rangeObj = null; apObj = null; ajObj = null; fbwObj = null;
-                    lastFuelGauge = fg;
-                    fuelFlowEma = 0f;
-                    lastUpdateTime = 0f;
+
+                    if (_cachedFuelGauge != null) {
+                        _cachedRefLabel = Traverse.Create(_cachedFuelGauge).Field("fuelLabel").GetValue<Text>();
+                    }
                 }
 
-                Text refLabel = Traverse.Create(fg).Field("fuelLabel").GetValue<Text>();
-                if (refLabel == null) return;
+                if (_cachedFuelGauge == null || _cachedRefLabel == null) return;
 
                 if (!timerObj) {
                     GameObject Spawn(string name) {
-                        GameObject go = UnityEngine.Object.Instantiate(refLabel.gameObject, __instance.transform); 
+                        GameObject go = UnityEngine.Object.Instantiate(_cachedRefLabel.gameObject, __instance.transform); 
                         go.name = name;
                         go.SetActive(true); 
                         return go;
@@ -935,11 +1131,17 @@ namespace AutopilotMod
                     apObj = Spawn("AP_Status");
                     ajObj = Spawn("AP_Jammer");
                     fbwObj = Spawn("AP_FBW");
+
+                    tText = timerObj.GetComponent<Text>();
+                    rText = rangeObj.GetComponent<Text>();
+                    aText = apObj.GetComponent<Text>();
+                    jText = ajObj.GetComponent<Text>();
+                    fText = fbwObj.GetComponent<Text>();
                 }
 
                 float startY = Plugin.FuelOffsetY.Value;
                 float gap = Plugin.FuelLineSpacing.Value;
-                Vector3 basePos = refLabel.transform.position;
+                Vector3 basePos = _cachedRefLabel.transform.position;
 
                 void Place(GameObject obj, int index) {
                     if (!obj) return;
@@ -953,6 +1155,9 @@ namespace AutopilotMod
                 Place(fbwObj, 4);
 
                 // Update Text
+                Aircraft aircraft = APData.LocalAircraft;
+                if (aircraft == null) return;
+
                 float currentFuel = (float)Plugin.f_fuelCapacity.GetValue(aircraft) * aircraft.GetFuelLevel();
                 float time = Time.time;
                 if (lastUpdateTime != 0f) {
@@ -965,12 +1170,6 @@ namespace AutopilotMod
                         lastFuelMass = currentFuel;
                     }
                 } else { lastUpdateTime = time; lastFuelMass = currentFuel; }
-
-                Text tText = timerObj.GetComponent<Text>();
-                Text rText = rangeObj.GetComponent<Text>();
-                Text aText = apObj.GetComponent<Text>();
-                Text jText = ajObj.GetComponent<Text>();
-                Text fText = fbwObj.GetComponent<Text>();
 
                 if (currentFuel <= 1f) {
                     tText.text = "00:00"; tText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
@@ -999,11 +1198,12 @@ namespace AutopilotMod
                     aText.text = "AUTO-GCAS"; aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
                 } else if (APData.GCASWarning) {
                     aText.text = "PULL UP"; aText.color = ModUtils.GetColor(Plugin.ColorCrit.Value, Color.red);
-                } else if (APData.Enabled) {
+                } else if (APData.Enabled && Plugin.ShowAPOverlay.Value) {
                     string altStr = ModUtils.FormatAltitude(APData.TargetAlt, Plugin.AltShowUnit.Value);
                     string climbStr = ModUtils.FormatVertSpeed(APData.CurrentMaxClimbRate, Plugin.VertSpeedShowUnit.Value);
                     string rollStr = ModUtils.FormatAngle(APData.TargetRoll, Plugin.AngleShowUnit.Value);
-                    aText.text = $"{altStr} {climbStr} {rollStr}";
+                    string newText = $"{altStr} {climbStr} {rollStr}";
+                    if (aText.text != newText) aText.text = newText;
                     aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
                 } else if (!APData.GCASEnabled && Plugin.ShowGCASOff.Value) {
                     aText.text = "GCAS OFF"; aText.color = ModUtils.GetColor(Plugin.ColorWarn.Value, Color.yellow);
