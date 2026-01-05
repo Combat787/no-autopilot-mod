@@ -32,7 +32,7 @@ In approximate likelihood of implementation order descending.
 - waypoints and flying to them
 - separate PID values for every aircraft
 - nap of the earth flying
-- helicopter support
+- proper helicopter support
 - auto take-off and landing
 
 ## Autopilot
@@ -63,7 +63,7 @@ Use this mod at your own risk.
 
 ## Auto Jammer
 
-There is also an auto jammer mode for EW plane, that will jam if capacitor is full. The auto jammer will hit the fire button and there is no check for whether the jammer pods are selected, so you should make sure that they are. There is a check for the plane itself though, so you don't have to worry about accidentally enabling it on a different plane.
+There is also an auto jammer mode for Medusa, that will jam if capacitor is full. The auto jammer will hit the fire button and there is no check for whether the jammer pods are selected, so you should make sure that they are. There is a check for the plane itself though, so you don't have to worry about accidentally enabling it on a different plane.
 
 Also has humanlike options that can reduce its reaction time and randomise it.
 
@@ -71,7 +71,7 @@ Also has humanlike options that can reduce its reaction time and randomise it.
 
 Also displays fuel time remaining and range. Unfortunately for non-metric system users, range is displayed in km. fuel time remaining is displayed HH: MM.
 
-Oh, forgot to mention that all the other units are also displayed in metric system, this cannot be changed.
+All the distance and speed units are displayed in metric system currently, this cannot be changed yet.
 
 ## Auto-GCAS
 
