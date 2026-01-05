@@ -343,12 +343,12 @@ namespace AutopilotMod
             DistanceUnit unit = Plugin.UnitDist.Value;
 
             if (unit == DistanceUnit.NauticalMiles)
-                return $"{meters * 0.000539957f:F1}" + (showLabel ? " nm" : "");
+                return $"{meters * 0.000539957f:F0}" + (showLabel ? " nm" : "");
             
             if (unit == DistanceUnit.Miles)
-                return $"{meters * 0.000621371f:F1}" + (showLabel ? " mi" : "");
+                return $"{meters * 0.000621371f:F0}" + (showLabel ? " mi" : "");
             
-            return $"{meters / 1000f:F1}" + (showLabel ? " km" : "");
+            return $"{meters / 1000f:F0}" + (showLabel ? " km" : "");
         }
 
         public static string FormatVertSpeed(float ms, bool showLabel = true)
@@ -364,7 +364,7 @@ namespace AutopilotMod
             if (unit == VertSpeedUnit.Knots)
                 return $"{ms * 1.94384f:F0}" + (showLabel ? " kts" : "");
 
-            return $"{ms:F1}" + (showLabel ? " m/s" : "");
+            return $"{ms:F0}" + (showLabel ? " m/s" : "");
         }
 
         public static string FormatSpeed(float ms, bool showLabel = true)
