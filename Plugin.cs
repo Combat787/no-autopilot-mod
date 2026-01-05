@@ -145,10 +145,10 @@ namespace AutopilotMod
             UnitDist = Config.Bind("Visuals - Units", "2. Distance Units", DistanceUnit.Kilometers, "Unit for Range.");
             UnitVertSpeed = Config.Bind("Visuals - Units", "3. Vertical Speed Units", VertSpeedUnit.MetersPerSec, "Unit for Climb Rate.");
             UnitSpeed = Config.Bind("Visuals - Units", "4. Airspeed Units", SpeedUnit.KilometersPerHour, "Unit for Forward Speed. (for autothrottle that doesn't exist yet)");
-            AltShowUnit = Config.Bind("Visuals - Units", "5. Show unit for alt", false, "(example) on: 10 m, off: 10");
-            DistShowUnit = Config.Bind("Visuals - Units", "6. Show unit for dist", true, "(example) on: 10 km, off: 10");
-            VertSpeedShowUnit = Config.Bind("Visuals - Units", "7. Show unit for vertical speed", false, "(example) on: 10 m/s, off: 10");
-            SpeedShowUnit = Config.Bind("Visuals - Units", "8. Show unit for speed", false, "(example) on: 10 km/h, off: 10 (unused right now, no autothrottle yet)");
+            AltShowUnit = Config.Bind("Visuals - Units", "5. Show unit for alt", false, "(example) on: 10m, off: 10");
+            DistShowUnit = Config.Bind("Visuals - Units", "6. Show unit for dist", true, "(example) on: 10km, off: 10");
+            VertSpeedShowUnit = Config.Bind("Visuals - Units", "7. Show unit for vertical speed", false, "(example) on: 10m/s, off: 10");
+            SpeedShowUnit = Config.Bind("Visuals - Units", "8. Show unit for speed", false, "(example) on: 10km/h, off: 10 (unused right now, no autothrottle yet)");
             AngleShowUnit = Config.Bind("Visuals - Units", "9. Show unit for angle", false, "on: 10°, off: 10");
 
             FuelSmoothing = Config.Bind("Calculations", "1. Fuel Flow Smoothing", 0.1f, "Alpha value");
@@ -333,9 +333,9 @@ namespace AutopilotMod
         public static string FormatAltitude(float meters, bool showLabel = true)
         {
             if (Plugin.UnitAlt.Value == AltitudeUnit.Feet)
-                return $"{meters * 3.28084f:F0}" + (showLabel ? " ft" : "");
+                return $"{meters * 3.28084f:F0}" + (showLabel ? "ft" : "");
             
-            return $"{meters:F0}" + (showLabel ? " m" : "");
+            return $"{meters:F0}" + (showLabel ? "m" : "");
         }
 
         public static string FormatDistance(float meters, bool showLabel = true)
@@ -343,12 +343,12 @@ namespace AutopilotMod
             DistanceUnit unit = Plugin.UnitDist.Value;
 
             if (unit == DistanceUnit.NauticalMiles)
-                return $"{meters * 0.000539957f:F0}" + (showLabel ? " nmi" : "");
+                return $"{meters * 0.000539957f:F0}" + (showLabel ? "nmi" : "");
             
             if (unit == DistanceUnit.Miles)
-                return $"{meters * 0.000621371f:F0}" + (showLabel ? " mi" : "");
+                return $"{meters * 0.000621371f:F0}" + (showLabel ? "mi" : "");
             
-            return $"{meters / 1000f:F0}" + (showLabel ? " km" : "");
+            return $"{meters / 1000f:F0}" + (showLabel ? "km" : "");
         }
 
         public static string FormatVertSpeed(float ms, bool showLabel = true)
@@ -356,15 +356,15 @@ namespace AutopilotMod
             VertSpeedUnit unit = Plugin.UnitVertSpeed.Value;
 
             if (unit == VertSpeedUnit.FeetPerMin)
-                return $"{ms * 196.85f:F0}" + (showLabel ? " fpm" : "");
+                return $"{ms * 196.85f:F0}" + (showLabel ? "fpm" : "");
             
             if (unit == VertSpeedUnit.FeetPerSec)
-                return $"{ms * 3.28084f:F0}" + (showLabel ? " fps" : "");
+                return $"{ms * 3.28084f:F0}" + (showLabel ? "fps" : "");
 
             if (unit == VertSpeedUnit.Knots)
-                return $"{ms * 1.94384f:F0}" + (showLabel ? " kts" : "");
+                return $"{ms * 1.94384f:F0}" + (showLabel ? "kts" : "");
 
-            return $"{ms:F0}" + (showLabel ? " m/s" : "");
+            return $"{ms:F0}" + (showLabel ? "m/s" : "");
         }
 
         public static string FormatSpeed(float ms, bool showLabel = true)
@@ -372,15 +372,15 @@ namespace AutopilotMod
             SpeedUnit unit = Plugin.UnitSpeed.Value;
 
             if (unit == SpeedUnit.Knots)
-                return $"{ms * 1.94384f:F0}" + (showLabel ? " kts" : "");
+                return $"{ms * 1.94384f:F0}" + (showLabel ? "kts" : "");
 
             if (unit == SpeedUnit.MilesPerHour)
-                return $"{ms * 2.23694f:F0}" + (showLabel ? " mph" : "");
+                return $"{ms * 2.23694f:F0}" + (showLabel ? "mph" : "");
 
             if (unit == SpeedUnit.KilometersPerHour)
-                return $"{ms * 3.6f:F0}" + (showLabel ? " kph" : "");
+                return $"{ms * 3.6f:F0}" + (showLabel ? "kph" : "");
 
-            return $"{ms:F0}" + (showLabel ? " m/s" : "");
+            return $"{ms:F0}" + (showLabel ? "m/s" : "");
         }
 
         public static string FormatAngle(float angle, bool showLabel = true)
