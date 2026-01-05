@@ -24,7 +24,7 @@ namespace AutopilotMod
         private bool _isResizing = false;
         private Rect _resizeRect = new Rect(0, 0, 0, 0);
         
-        private string _bufAlt = "10000";
+        private string _bufAlt = "0";
         private string _bufClimb = "40";
         private string _bufRoll = "0";
         
@@ -331,7 +331,13 @@ namespace AutopilotMod
 
         private void SyncMenuValues()
         {
-            _bufAlt = APData.TargetAlt.ToString("F0");
+            float currentAlt_Raw = APData.TargetAlt > 0 
+                ? APData.TargetAlt
+                : 0.0f;
+
+            float displayAlt = ModUtils.ConvertAlt_ToDisplay(currentAlt_Raw);
+
+            _bufAlt = displayAlt.ToString("F0");
             
             float currentVS_Raw = APData.CurrentMaxClimbRate > 0 
                 ? APData.CurrentMaxClimbRate 
@@ -458,7 +464,8 @@ namespace AutopilotMod
 
             if (GUILayout.Button("SET VALUES", _styleButton))
             {
-                if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
+                if (float.TryParse(_bufAlt, out float a)) 
+                    APData.TargetAlt = ModUtils.ConvertAlt_FromDisplay(a);
                 
                 if (float.TryParse(_bufClimb, out float c)) 
                     APData.CurrentMaxClimbRate = Mathf.Max(0.5f, ModUtils.ConvertVS_FromDisplay(c));
@@ -474,7 +481,8 @@ namespace AutopilotMod
                 APData.Enabled = !APData.Enabled;
                 if (APData.Enabled)
                 {
-                    if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
+                    if (float.TryParse(_bufAlt, out float a)) 
+                        APData.TargetAlt = ModUtils.ConvertAlt_FromDisplay(a);
                     
                     if (float.TryParse(_bufClimb, out float c)) 
                         APData.CurrentMaxClimbRate = Mathf.Max(0.5f, ModUtils.ConvertVS_FromDisplay(c));
@@ -656,6 +664,20 @@ namespace AutopilotMod
         public static string FormatAngle(float angle, bool showLabel = true)
         {
             return $"{angle:F0}" + (showLabel ? "°" : "");
+        }
+
+        public static float ConvertAlt_ToDisplay(float meters)
+        {
+            if (Plugin.UnitAlt.Value == AltitudeUnit.Feet)
+                return meters * 3.28084f;
+            return meters;
+        }
+
+        public static float ConvertAlt_FromDisplay(float displayVal)
+        {
+            if (Plugin.UnitAlt.Value == AltitudeUnit.Feet)
+                return displayVal / 3.28084f;
+            return displayVal;
         }
 
         public static float ConvertVS_ToDisplay(float metersPerSec)
@@ -952,7 +974,7 @@ namespace AutopilotMod
                     }
                 }
 
-                // --- JAMMER LOGIC (Cached) ---
+                // auto jam
                 if (APData.AutoJammerActive && acRef != null && acRef.name.Contains("EW1"))
                 {
                     if (Plugin.f_charge != null && Plugin.f_powerSupply != null) {
@@ -986,7 +1008,7 @@ namespace AutopilotMod
                     }
                 }
 
-                // --- AUTOPILOT CORE ---
+                // autopilot
                 if (APData.Enabled)
                 {
                     if (Mathf.Abs(stickPitch) > Plugin.StickDeadzone.Value || Mathf.Abs(stickRoll) > Plugin.StickDeadzone.Value)
