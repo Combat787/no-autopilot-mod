@@ -323,7 +323,7 @@ namespace AutopilotMod
                 ? APData.CurrentMaxClimbRate 
                 : DefaultMaxClimbRate.Value;
 
-            _bufClimb = ModUtils.ConvertVS_ToDisplay(currentAlt_Raw).ToString("F0");
+            _bufClimb = ModUtils.ConvertVS_ToDisplay(currentVS_Raw).ToString("F0");
 
             _bufRoll = APData.TargetRoll.ToString("F0");
         }
