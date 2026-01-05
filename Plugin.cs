@@ -1190,7 +1190,7 @@ namespace AutopilotMod
                 } else if (APData.Enabled && Plugin.ShowAPOverlay.Value) {
                     string altStr = UnitConverter.AltitudeReading(APData.TargetAlt);
                     string climbStr = UnitConverter.ClimbRateReading(APData.CurrentMaxClimbRate);
-                    string rollStr = $"{APData.TargetRoll}";
+                    string rollStr = $"{APData.TargetRoll}°";
                     string newText = $"{altStr} {climbStr} {rollStr}";
                     if (aText.text != newText) aText.text = newText;
                     aText.color = ModUtils.GetColor(Plugin.ColorAPOn.Value, Color.green);
