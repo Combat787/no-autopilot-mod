@@ -17,8 +17,12 @@ namespace AutopilotMod
 
         // ap menu?
         public static ConfigEntry<KeyCode> MenuKey;
-        private Rect _windowRect = new Rect(50, 50, 250, 300);
+        private Rect _windowRect = new Rect(50, 50, 250, 450);
         private bool _showMenu = false;
+        
+        private Vector2 _scrollPos;
+        private bool _isResizing = false;
+        private Rect _resizeRect = new Rect(0, 0, 0, 0);
         
         private string _bufAlt = "10000";
         private string _bufClimb = "40";
@@ -30,7 +34,7 @@ namespace AutopilotMod
         private bool _stylesInitialized = false;
 
         public static ConfigEntry<float> UI_PosX, UI_PosY;
-        public static ConfigEntry<float> UI_Opacity;
+        public static ConfigEntry<float> UI_Width, UI_Height;
         private bool _firstWindowInit = true;
 
         // Visuals
@@ -139,9 +143,8 @@ namespace AutopilotMod
 
             UI_PosX = Config.Bind("Visuals - UI", "1. Window Position X", -1f, "-1 = Auto Bottom Right, otherwise pixel value");
             UI_PosY = Config.Bind("Visuals - UI", "2. Window Position Y", -1f, "-1 = Auto Bottom Right, otherwise pixel value");
-            UI_Opacity = Config.Bind("Visuals - UI", "3. Window Opacity", 0.50f, 
-            new ConfigDescription("Transparency of the Autopilot window.", 
-            new AcceptableValueRange<float>(0f, 1f)));
+            UI_Width = Config.Bind("Visuals - UI", "3. Window Width", 300f, "Saved Width");
+            UI_Height = Config.Bind("Visuals - UI", "4. Window Height", 450f, "Saved Height");
 
             FuelSmoothing = Config.Bind("Calculations", "1. Fuel Flow Smoothing", 0.1f, "Alpha value");
             FuelUpdateInterval = Config.Bind("Calculations", "2. Fuel Update Interval", 1.0f, "Seconds");
@@ -291,20 +294,9 @@ namespace AutopilotMod
         private void InitStyles()
         {
             _styleWindow = new GUIStyle(GUI.skin.window);
+            
             _styleLabel = new GUIStyle(GUI.skin.label);
-            
-            Texture2D bgTex = new Texture2D(1, 1);
-            float alpha = Mathf.Clamp01(UI_Opacity.Value);
-            bgTex.SetPixel(0, 0, new Color(0.15f, 0.15f, 0.15f, alpha)); 
-            bgTex.Apply();
-
-            _styleWindow.normal.background = bgTex;
-            _styleWindow.onNormal.background = bgTex;
-            _styleWindow.hover.background = bgTex;
-            _styleWindow.active.background = bgTex;
-            _styleWindow.focused.background = bgTex;
-            
-            _styleWindow.normal.textColor = Color.white;
+            _styleLabel.alignment = TextAnchor.MiddleLeft;
 
             _styleButton = new GUIStyle(GUI.skin.button);
             _styleButton.fixedHeight = 25;
@@ -341,10 +333,13 @@ namespace AutopilotMod
         {
             _bufAlt = APData.TargetAlt.ToString("F0");
             
-            float currentVS = APData.CurrentMaxClimbRate > 0 
+            float currentVS_Raw = APData.CurrentMaxClimbRate > 0 
                 ? APData.CurrentMaxClimbRate 
                 : DefaultMaxClimbRate.Value;
-            _bufClimb = currentVS.ToString("F0");
+
+            float displayVS = ModUtils.ConvertVS_ToDisplay(currentVS_Raw);
+
+            _bufClimb = displayVS.ToString("F0");
             
             _bufRoll = APData.TargetRoll.ToString("F0");
         }
@@ -354,28 +349,59 @@ namespace AutopilotMod
             if (!_showMenu) return;
             if (!_stylesInitialized) InitStyles();
 
+            if (_isResizing)
+            {
+                // If we let go of the mouse anywhere on screen, stop resizing
+                if (Event.current.type == EventType.MouseUp)
+                {
+                    _isResizing = false;
+                }
+                // If we drag the mouse anywhere on screen, update window size
+                else if (Event.current.type == EventType.MouseDrag)
+                {
+                    // Add the mouse movement (delta) to the width/height
+                    _windowRect.width = Mathf.Max(250f, _windowRect.width + Event.current.delta.x);
+                    _windowRect.height = Mathf.Max(200f, _windowRect.height + Event.current.delta.y);
+                    
+                    // Repaint immediately so the UI feels responsive
+                    Event.current.Use();
+                }
+            }
+
             if (_firstWindowInit)
             {
-                float w = _windowRect.width;
-                float h = _windowRect.height;
+                // Load positions and sizes from Config
                 float x = UI_PosX.Value;
                 float y = UI_PosY.Value;
+                float w = Mathf.Max(250f, UI_Width.Value);
+                float h = Mathf.Max(200f, UI_Height.Value);
 
                 if (x < 0) x = Screen.width - w - 20;
                 if (y < 0) y = Screen.height - h - 50;
 
-                _windowRect.x = x;
-                _windowRect.y = y;
+                _windowRect = new Rect(x, y, w, h);
                 _firstWindowInit = false;
             }
 
+            // Draw the window
             _windowRect = GUI.Window(999, _windowRect, DrawAPWindow, "AUTOPILOT CONTROLS", _styleWindow);
         }
 
         private void DrawAPWindow(int windowID)
         {
-            GUI.DragWindow(new Rect(0, 0, 10000, 20));
+            // detect click
+            // The handle is a 20x20 square in the bottom right corner
+            Rect resizeHandleRect = new Rect(_windowRect.width - 20, _windowRect.height - 20, 20, 20);
 
+            if (Event.current.type == EventType.MouseDown && resizeHandleRect.Contains(Event.current.mousePosition))
+            {
+                _isResizing = true;
+                Event.current.Use(); // Consume the click so we don't click buttons underneath
+            }
+
+            GUI.DragWindow(new Rect(0, 0, 10000, 25));
+
+            // Save Config
             if (Event.current.type == EventType.Repaint)
             {
                 if (_windowRect.x != UI_PosX.Value || _windowRect.y != UI_PosY.Value)
@@ -383,19 +409,26 @@ namespace AutopilotMod
                     UI_PosX.Value = _windowRect.x;
                     UI_PosY.Value = _windowRect.y;
                 }
+                if (_windowRect.width != UI_Width.Value || _windowRect.height != UI_Height.Value)
+                {
+                    UI_Width.Value = _windowRect.width;
+                    UI_Height.Value = _windowRect.height;
+                }
             }
+
+            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(_windowRect.height - 40));
 
             GUILayout.BeginVertical();
 
             string cOn = ColorAPOn.Value.StartsWith("#") ? ColorAPOn.Value : "#" + ColorAPOn.Value;
             string cOff = ColorAPOff.Value.StartsWith("#") ? ColorAPOff.Value : "#" + ColorAPOff.Value;
-
             string statusColor = APData.Enabled ? cOn : cOff;
             string statusText = APData.Enabled ? "ENGAGED" : "DISENGAGED";
             
             GUILayout.Label($"STATUS: <color={statusColor}>{statusText}</color>", _styleLabel);
-            
-            float currentVS = (APData.PlayerRB != null) ? APData.PlayerRB.velocity.y : 0f;
+
+            float currentVS = 0f;
+            if (APData.PlayerRB != null) currentVS = APData.PlayerRB.velocity.y;
             
             string sAlt = ModUtils.FormatAltitude(APData.CurrentAlt, true);
             string sRoll = ModUtils.FormatAngle(APData.CurrentRoll, true);
@@ -426,7 +459,10 @@ namespace AutopilotMod
             if (GUILayout.Button("SET VALUES", _styleButton))
             {
                 if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
-                if (float.TryParse(_bufClimb, out float c)) APData.CurrentMaxClimbRate = Mathf.Max(0.5f, c);
+                
+                if (float.TryParse(_bufClimb, out float c)) 
+                    APData.CurrentMaxClimbRate = Mathf.Max(0.5f, ModUtils.ConvertVS_FromDisplay(c));
+                
                 if (float.TryParse(_bufRoll, out float r)) APData.TargetRoll = r;
             }
 
@@ -439,19 +475,19 @@ namespace AutopilotMod
                 if (APData.Enabled)
                 {
                     if (float.TryParse(_bufAlt, out float a)) APData.TargetAlt = a;
-                    if (float.TryParse(_bufClimb, out float c)) APData.CurrentMaxClimbRate = c;
+                    
+                    if (float.TryParse(_bufClimb, out float c)) 
+                        APData.CurrentMaxClimbRate = Mathf.Max(0.5f, ModUtils.ConvertVS_FromDisplay(c));
+                        
                     if (float.TryParse(_bufRoll, out float r)) APData.TargetRoll = r;
                 }
             }
             GUI.backgroundColor = Color.white;
 
             GUILayout.Space(15);
-            GUILayout.Label("SYSTEMS", _styleLabel);
 
             if (GUILayout.Button($"Auto Jammer: {(APData.AutoJammerActive ? "ON" : "OFF")}", _styleButton))
-            {
                 APData.AutoJammerActive = !APData.AutoJammerActive;
-            }
 
             if (GUILayout.Button($"Auto GCAS: {(APData.GCASEnabled ? "ON" : "OFF")}", _styleButton))
             {
@@ -460,9 +496,7 @@ namespace AutopilotMod
             }
 
             if (GUILayout.Button($"FBW Stability: {(APData.FBWDisabled ? "OFF" : "ON")}", _styleButton))
-            {
                 ToggleFBW_Action();
-            }
 
             if (GUILayout.Button("Reset Bank (Level)", _styleButton))
             {
@@ -471,6 +505,10 @@ namespace AutopilotMod
             }
 
             GUILayout.EndVertical();
+
+            GUILayout.EndScrollView();
+
+            GUI.Label(resizeHandleRect, "↘");
         }
 
         public static void ToggleFBW_Action()
@@ -618,6 +656,30 @@ namespace AutopilotMod
         public static string FormatAngle(float angle, bool showLabel = true)
         {
             return $"{angle:F0}" + (showLabel ? "°" : "");
+        }
+
+        public static float ConvertVS_ToDisplay(float metersPerSec)
+        {
+            VertSpeedUnit unit = Plugin.UnitVertSpeed.Value;
+            switch (unit)
+            {
+                case VertSpeedUnit.FeetPerMin: return metersPerSec * 196.850394f;
+                case VertSpeedUnit.FeetPerSec: return metersPerSec * 3.28084f;
+                case VertSpeedUnit.Knots:      return metersPerSec * 1.94384f;
+                default:                       return metersPerSec;
+            }
+        }
+
+        public static float ConvertVS_FromDisplay(float displayVal)
+        {
+            VertSpeedUnit unit = Plugin.UnitVertSpeed.Value;
+            switch (unit)
+            {
+                case VertSpeedUnit.FeetPerMin: return displayVal / 196.850394f;
+                case VertSpeedUnit.FeetPerSec: return displayVal / 3.28084f;
+                case VertSpeedUnit.Knots:      return displayVal / 1.94384f;
+                default:                       return displayVal;
+            }
         }
     }
 
