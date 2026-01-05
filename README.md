@@ -124,7 +124,7 @@ The [BepInEx Configuration Manager](https://github.com/BepInEx/BepInEx.Configura
 
 prerequisites
 
-- dotnet 10 something
+- .NET SDK 10 something
 - game files
 
 steps
